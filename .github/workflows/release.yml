@@ -1,0 +1,101 @@
+name: 'Release'
+
+# 推送 v* 格式的 tag 时自动触发打包发布。
+# 支持 macOS / Windows / Linux 三平台并行构建。
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      # 单平台失败不取消其他平台（最大化构建成功率）。
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target universal-apple-darwin --bundles app,dmg'
+            rust_target: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            args: '--bundles deb,appimage'
+            rust_target: ''
+          - platform: 'windows-latest'
+            args: '--bundles nsis'
+            rust_target: ''
+
+    runs-on: ${{ matrix.platform }}
+    concurrency:
+      group: release-${{ github.ref }}-${{ matrix.platform }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies (macos only)
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+          echo "TAURI_BUNDLER_DMG_IGNORE_CI=true" >> $GITHUB_ENV
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ZCodePet ${{ github.ref_name }}'
+          releaseBody: |
+            ## ZCodePet ${{ github.ref_name }}
+
+            ### 下载
+
+            - **macOS**: 使用 `.dmg` 安装（通用版，支持 Apple Silicon 和 Intel）。
+            - **Windows**: 使用 `-setup.exe` 安装程序。
+            - **Linux**: 使用 `.deb` 或 `.AppImage`。
+
+            ### 系统要求
+
+            - macOS 10.13+
+            - Windows 10+
+            - Ubuntu 20.04+ / Debian 11+（需 `libwebkit2gtk-4.1-0`）
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

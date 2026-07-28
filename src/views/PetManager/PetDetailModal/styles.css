@@ -1,0 +1,208 @@
+/* ============================================================
+   PetDetailModal — 详情弹窗
+   布局：左预览(固定宽) + 右信息(独立滚动)
+   关键：align-items: start 让左右不等高，右侧不撑高左侧
+   ============================================================ */
+
+.pet-detail {
+  display: flex;
+  align-items: flex-start; /* 关键：左右不等高 */
+  width: 680px;
+  max-width: 92vw;
+  max-height: 85vh;
+  padding: var(--space-6);
+  gap: var(--space-6);
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+/* --- 左侧预览：固定宽度，高度跟随内容（不被右侧撑高） --- */
+.pet-detail__stage {
+  flex-shrink: 0;
+  width: 260px;
+  height: 340px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 85%, var(--color-primary-light) 0%, var(--color-bg-muted) 50%, transparent 80%);
+}
+
+/* --- 右侧信息区：占满剩余宽度，独立滚动 --- */
+.pet-detail__side {
+  flex: 1;
+  min-width: 0;
+  max-height: calc(85vh - var(--space-6) * 2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+}
+
+/* --- 标题行：名称 + 按钮，一行排列 --- */
+.pet-detail__topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pet-detail__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pet-detail__name {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-detail__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.pet-detail__kind {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+}
+
+.pet-detail__badge {
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-primary);
+  border-radius: 99px;
+}
+
+.pet-detail__badge--muted {
+  background: var(--color-text-tertiary);
+}
+
+/* 操作按钮组（紧贴标题右侧） */
+.pet-detail__top-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.pet-detail__current {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-success);
+  padding: 2px 8px;
+  background: rgba(22, 163, 74, 0.1);
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+/* --- 描述 --- */
+.pet-detail__desc {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --- 标签 --- */
+.pet-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pet-detail__tag {
+  padding: 2px var(--space-2);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-muted);
+  border-radius: 99px;
+}
+
+/* --- 动画状态网格 --- */
+.pet-detail__anims {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pet-detail__anims-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pet-detail__anims-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: var(--space-2);
+}
+
+.anim-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--duration) var(--ease),
+    background-color var(--duration) var(--ease);
+}
+
+.anim-cell:hover {
+  background: var(--color-bg-muted);
+}
+
+.anim-cell--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.anim-cell__label {
+  font-size: 9px;
+  color: var(--color-text-tertiary);
+  text-transform: capitalize;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* --- 响应式：窄屏堆叠 --- */
+@media (max-width: 600px) {
+  .pet-detail {
+    flex-direction: column;
+    width: 100%;
+  }
+  .pet-detail__stage {
+    width: 100%;
+    height: 240px;
+  }
+}

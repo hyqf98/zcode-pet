@@ -1,0 +1,42 @@
+/* 宠物实时预览容器：透明背景，画布居中铺满。 */
+
+.pet-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 50% 85%, var(--color-primary-light) 0%, var(--color-bg-muted) 50%, transparent 80%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.pet-preview__host {
+  position: absolute;
+  inset: 0;
+}
+
+.pet-preview__host :deep(.desktop-pet-canvas) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pet-preview__hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.pet-preview__hint--error {
+  color: var(--color-danger);
+}

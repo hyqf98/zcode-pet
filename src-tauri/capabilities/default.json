@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for main + pet windows",
+  "windows": ["main", "pet"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "core:tray:default",
+    "core:menu:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-position",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-start-dragging",
+    "core:window:allow-current-monitor",
+    "core:window:allow-available-monitors",
+    "core:window:allow-primary-monitor",
+    "core:window:allow-outer-position",
+    "core:window:allow-scale-factor",
+    "core:window:allow-cursor-position",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-is-visible",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
+    "core:window:allow-create",
+    "core:window:allow-get-all-windows",
+    "core:window:allow-set-focus",
+    "core:webview:allow-create-webview",
+    "mcp-bridge:default"
+  ]
+}

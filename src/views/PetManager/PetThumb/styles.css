@@ -1,0 +1,14 @@
+/* 单格精灵图缩略图。 */
+
+.pet-thumb {
+  width: 100%;
+  aspect-ratio: 192 / 208;
+  background-color: var(--color-bg-muted);
+  background-position: 0% 0%;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.pet-thumb--round {
+  border-radius: 99px;
+}

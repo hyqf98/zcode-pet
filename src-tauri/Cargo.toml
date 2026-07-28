@@ -1,0 +1,69 @@
+[package]
+name = "zcode_pet"
+version = "1.0.0"
+description = "ZCode Pet - 桌面宠物应用（独立 Tauri 2 应用）"
+authors = ["hyqf"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+name = "zcode_pet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri 核心
+# - protocol-asset: 允许前端通过 convertFileSrc 加载本地精灵图
+# - macos-private-api: macOS 透明无边框窗口（桌面宠物悬浮窗所需）
+# - tray-icon: 系统托盘（TrayIconBuilder / menu）
+tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
+tauri-plugin-opener = "2"
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 异步运行时（异步文件 I/O）
+tokio = { version = "1", features = ["full"] }
+
+# 时间处理（版本号时间戳）
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP 客户端（codex-pets.net 市场搜索/下载）
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 错误处理
+thiserror = "2"
+anyhow = "1"
+
+# 本地 HTTP 服务（接收 ZCode hook 转发的事件）
+axum = "0.7"
+# 定位 ~/.zcode 等用户目录
+dirs = "5"
+
+# MCP Bridge（仅 debug 构建启用，供 Tauri MCP 端到端测试）
+tauri-plugin-mcp-bridge = "0.12"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "debuginfo"
+
+# wry #1752 修复：WKWebView URL 为 nil 时 unwrap panic（macOS）。
+# mcp-bridge 枚举窗口时触发；上游 PR #1753 (Buncys/wry:fix/macos-url-unwrap) 尚未合并发布，
+# 通过 patch 提前应用。合并发布后可移除此段。
+[patch.crates-io]
+wry = { git = "https://github.com/Buncys/wry.git", branch = "fix/macos-url-unwrap" }

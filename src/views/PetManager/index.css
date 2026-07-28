@@ -1,0 +1,581 @@
+/* ============================================================
+   PetManager — 管理窗口
+   布局：固定头尾 + 中间列表独立滚动
+   ============================================================ */
+
+.pet-manager {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding: 24px 32px 16px;
+  gap: 16px;
+  background: var(--color-bg);
+  overflow: hidden; /* 整体不滚动，只滚列表区 */
+}
+
+/* --- 顶部品牌区（不对称：左重右轻） --- */
+.pm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.pm-header__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pm-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--color-text-primary);
+}
+
+.pm-subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.pm-power {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pm-power__label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+/* --- 顶部操作区（更新按钮 + 总开关） --- */
+.pm-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 有新版本时显示的下载按钮（小、不抢眼） */
+.pm-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-primary, #3b82f6);
+  background: var(--color-primary-light, rgba(59, 130, 246, 0.1));
+  border: 1px solid transparent;
+  border-radius: var(--radius-full, 9999px);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.pm-update-btn:hover {
+  background: var(--color-primary-hover-light, rgba(59, 130, 246, 0.18));
+}
+
+.pm-update-btn:active {
+  transform: scale(0.96);
+}
+
+.pm-update-btn__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary, #3b82f6);
+  animation: pm-update-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pm-update-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* --- 未开启引导条 --- */
+.pm-guide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--color-primary-light);
+  border-radius: var(--radius-md);
+}
+
+.pm-guide__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+  animation: pm-pulse 2s var(--ease) infinite;
+}
+
+@keyframes pm-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15); }
+  50% { box-shadow: 0 0 0 7px rgba(79, 70, 229, 0.05); }
+}
+
+.pm-guide__text {
+  font-size: var(--text-sm);
+  color: var(--color-primary-hover);
+}
+
+/* --- 运行中状态条 --- */
+.pm-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 16px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.pm-status-bar__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pm-status-bar__key {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pm-status-bar__val {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.pm-status-bar__val--live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-success);
+}
+
+.pm-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+  animation: pm-pulse-live 1.6s ease-in-out infinite;
+}
+
+@keyframes pm-pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.pm-status-bar__divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+}
+
+.pm-status-bar__spacer {
+  flex: 1;
+}
+
+.pm-status-bar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* --- tab 导航 --- */
+.pm-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pm-tab {
+  position: relative;
+  padding: 8px 16px 10px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color var(--duration) var(--ease);
+}
+
+.pm-tab:hover {
+  color: var(--color-text-secondary);
+}
+
+.pm-tab--active {
+  color: var(--color-text-primary);
+}
+
+.pm-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 2px 2px 0 0;
+}
+
+.pm-tab__count {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-muted);
+  border-radius: 99px;
+}
+
+/* --- 面板：占据剩余空间，内部列表独立滚动 --- */
+.pm-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 筛选栏：固定在面板顶部，不滚动 */
+.pm-filters {
+  flex-shrink: 0;
+}
+
+/* 列表滚动区：只有这里滚。
+   顶部留 padding 容纳卡片 hover 时的 translateY 上移，避免第一行卡片被容器顶部裁切。 */
+.pm-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.pm-empty {
+  padding: 40px 16px;
+  text-align: center;
+  font-size: var(--text-base);
+  color: var(--color-text-tertiary);
+}
+
+/* 卡片网格 */
+.pm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+/* --- 宠物卡片（去 border，靠白色卡片 + 彩色阴影分层） --- */
+.pm-card {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition:
+    box-shadow var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+.pm-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-hover);
+}
+
+.pm-card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+/* 选中态：用 outline 内描边而非 box-shadow。
+   - 不被相邻卡片/容器边缘遮挡（outline 不占布局、不裁切）。
+   - 不与 hover 的 box-shadow 冲突（不同属性），hover 时高亮保留 + 抬升阴影共存。 */
+.pm-card--active {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.pm-card__thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 192 / 208;
+  margin-bottom: 10px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-muted);
+}
+
+.pm-card__tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  border-radius: 99px;
+}
+
+.pm-card__tag--active {
+  background: var(--color-primary);
+}
+
+.pm-card__tag--done {
+  background: rgba(22, 163, 74, 0.85);
+}
+
+.pm-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.pm-card__name {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pm-card__kind {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-transform: capitalize;
+}
+
+.pm-card__dl {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-card__action {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* --- 筛选栏（面板内固定，不滚） --- */
+.pm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.pm-filters__search {
+  flex: 1;
+  min-width: 160px;
+}
+
+.pm-filters__select {
+  width: 124px;
+}
+
+/* --- 分页（固定吸底） --- */
+.pm-pager {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.pm-pager__info {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+  text-align: center;
+}
+
+/* --- 设置区：可折叠（默认收起，释放垂直空间给宠物列表） --- */
+.pm-settings {
+  flex-shrink: 0;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* 折叠标题条：点击展开/收起，常驻占一行 */
+.pm-settings__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  text-align: left;
+}
+
+.pm-settings__toggle:hover {
+  background: var(--color-bg-subtle);
+}
+
+.pm-settings__toggle-text {
+  flex-shrink: 0;
+}
+
+/* 折叠态摘要：scale 值 + 联动状态，省得展开才能看 */
+.pm-settings__toggle-summary {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pm-settings__chip {
+  padding: 1px 8px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  border-radius: 99px;
+  background: var(--color-bg-muted);
+  color: var(--color-text-tertiary);
+}
+
+.pm-settings__chip--status {
+  background: var(--color-bg-muted);
+  color: var(--color-text-tertiary);
+}
+
+.pm-settings__chip--on {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+/* 箭头：展开时旋转 */
+.pm-settings__chevron {
+  flex-shrink: 0;
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  transition: transform var(--duration) var(--ease);
+}
+
+.pm-settings__toggle--open .pm-settings__chevron {
+  transform: rotate(180deg);
+}
+
+/* 展开后的设置体 */
+.pm-settings__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.pm-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* ZCode 联动：占整行，开关与标题同行，hint 在下方。 */
+.pm-setting--wide {
+  grid-column: 1 / -1;
+}
+
+.pm-setting__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pm-setting__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.pm-setting__value {
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.pm-setting__hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+.pm-setting__control {
+  width: 100%;
+}
+
+.pm-setting__control--lang {
+  max-width: 160px;
+}
+
+.pm-setting__control--scale {
+  width: 100%;
+}
+
+/* --- 响应式 --- */
+@media (max-width: 640px) {
+  .pet-manager {
+    padding: 20px 16px 24px;
+    gap: 16px;
+  }
+  .pm-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .pm-settings {
+    grid-template-columns: 1fr;
+  }
+}
