@@ -27,6 +27,9 @@
     "core:window:allow-get-all-windows",
     "core:window:allow-set-focus",
     "core:webview:allow-create-webview",
+    "opener:default",
+    "updater:default",
+    "process:default",
     "mcp-bridge:default"
   ]
 }

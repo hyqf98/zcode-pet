@@ -48,7 +48,18 @@ pub fn run() {
         .init();
 
     let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        // 应用内更新：process 提供重启能力，updater 提供下载安装能力。
+        .plugin(tauri_plugin_process::init())
+        .plugin({
+            let mut updater = tauri_plugin_updater::Builder::new();
+            // macOS CI 产出 universal binary，updater endpoint 按 darwin-universal 匹配。
+            #[cfg(target_os = "macos")]
+            {
+                updater = updater.target("darwin-universal");
+            }
+            updater.build()
+        });
 
     // MCP Bridge：仅 debug 构建启用，供 Tauri MCP 端到端测试（release 自动排除）。
     #[cfg(debug_assertions)]

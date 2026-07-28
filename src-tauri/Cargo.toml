@@ -21,6 +21,9 @@ tauri-build = { version = "2", features = [] }
 # - tray-icon: 系统托盘（TrayIconBuilder / menu）
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
 tauri-plugin-opener = "2"
+# 应用内自动更新（配合 GitHub Release 签名验证）
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # 序列化
 serde = { version = "1", features = ["derive"] }

@@ -36,6 +36,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "dmg", "app", "deb", "appimage"],
     "resources": {
       "resources/pets": "pets/"
@@ -64,6 +65,17 @@
     "linux": {
       "deb": {
         "depends": ["libwebkit2gtk-4.1-0"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNCMUMxOUJCQTM3NEVDOUYKUldTZjdIU2p1eGtjT3doTEM3Rlg0SE5uZ3h5TGtwMisyS1g3Yndic0ltK25HRnNYVVJ1cm1YRjQK",
+      "endpoints": [
+        "https://github.com/hyqf98/zcode-pet/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

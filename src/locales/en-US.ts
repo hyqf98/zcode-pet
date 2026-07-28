@@ -116,5 +116,7 @@ export default {
   // --- App update (ui.update.*) ----------------------------------------
   'ui.update.available': 'New version {version} available',
   'ui.update.download': 'Download update',
-  'ui.update.tooltip': 'Click to download {version}'
+  'ui.update.installing': 'Installing…',
+  'ui.update.downloadFailed': 'Update failed: {error}',
+  'ui.update.tooltip': 'Click to download and install {version} (restarts automatically)'
 } as const

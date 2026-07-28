@@ -18,9 +18,10 @@ const {
   scaleMax,
   scaleStep,
   activeSubTab,
-  settingsOpen,
-  updateInfo,
-  handleDownloadUpdate,
+    settingsOpen,
+    updateInfo,
+    installing,
+    handleDownloadUpdate,
   detailVisible,
   detailPet,
   zcodeLinked,
@@ -49,16 +50,17 @@ const {
         <p class="pm-subtitle">选一只陪伴你写代码的小家伙</p>
       </div>
       <div class="pm-header__actions">
-        <!-- 有新版本时显示下载按钮 -->
+        <!-- 有新版本时显示下载按钮（应用内更新，安装后自动重启） -->
         <button
           v-if="updateInfo.hasUpdate"
           type="button"
           class="pm-update-btn"
+          :disabled="installing"
           :title="t('ui.update.tooltip', { version: updateInfo.latestVersion })"
           @click="handleDownloadUpdate"
         >
           <span class="pm-update-btn__dot" />
-          {{ t('ui.update.available', { version: updateInfo.latestVersion }) }}
+          {{ installing ? t('ui.update.installing') : t('ui.update.available', { version: updateInfo.latestVersion }) }}
         </button>
         <label class="pm-power">
           <span class="pm-power__label">{{ petSettings.enabled ? '运行中' : '已关闭' }}</span>

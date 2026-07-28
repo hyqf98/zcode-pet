@@ -40,7 +40,7 @@ export function usePetManager() {
   const { t, locale } = useI18n()
   const petSettings = usePetSettingsStore()
   const desktopPetStore = useDesktopPetStore()
-  const { updateInfo, checkForAppUpdate } = useAppUpdate()
+  const { updateInfo, checkForAppUpdate, downloadAndInstallUpdate, installing } = useAppUpdate()
 
   const activeSubTab = ref<SubTab>('local')
 
@@ -273,17 +273,16 @@ export function usePetManager() {
   }
 
   /**
-   * 打开新版本下载页（GitHub Releases latest）。
-   * Tauri 运行时用 opener 插件唤起系统浏览器；开发环境 fallback 到 window.open。
+   * 下载并安装新版本（应用内更新）。
+   * updater 插件校验签名后下载安装，完成后自动 relaunch 重启应用。
+   * 失败时 toast 提示错误。
    */
   async function handleDownloadUpdate(): Promise<void> {
-    const url = updateInfo.value.downloadUrl
-    if (!url) return
+    if (installing.value || !updateInfo.value.hasUpdate) return
     try {
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(url)
-    } catch {
-      window.open(url, '_blank', 'noopener')
+      await downloadAndInstallUpdate()
+    } catch (e) {
+      message.error(t('ui.update.downloadFailed', { error: e instanceof Error ? e.message : String(e) }))
     }
   }
 
@@ -337,6 +336,7 @@ export function usePetManager() {
     settingsOpen,
     // app update
     updateInfo,
+    installing,
     handleDownloadUpdate,
     // detail modal
     detailVisible,

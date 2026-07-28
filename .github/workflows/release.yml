@@ -1,7 +1,7 @@
 name: 'Release'
 
 # 推送 v* 格式的 tag 时自动触发打包发布。
-# 支持 macOS / Windows / Linux 三平台并行构建。
+# 支持 macOS / Windows / Linux 三平台并行构建，并生成 updater 签名产物。
 on:
   workflow_dispatch:
   push:
@@ -74,6 +74,47 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate updater signing secret
+        shell: bash
+        run: |
+          secret='${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}'
+          secret="$(printf '%s' "$secret" | tr -d '\r\n\t ')"
+
+          if [ -z "$secret" ]; then
+            echo "::error::Missing repository secret TAURI_SIGNING_PRIVATE_KEY"
+            echo "::error::Go to Settings > Secrets and variables > Actions > Repository secrets"
+            exit 1
+          fi
+
+          if [[ "$secret" != dW50cnVzdGVkIGNvbW1lbnQ6* ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY does not look like a Tauri updater private key file content"
+            echo "::error::Paste the full content of .local/signing/tauri-updater-private.key into the repository secret"
+            exit 1
+          fi
+
+          SECRET_TO_VALIDATE="$secret" python - <<'PY'
+          import base64
+          import os
+          import sys
+
+          secret = os.environ["SECRET_TO_VALIDATE"]
+          try:
+              decoded = base64.b64decode(secret, validate=True).decode("utf-8", errors="strict")
+          except Exception as exc:
+              print(f"::error::TAURI_SIGNING_PRIVATE_KEY is not valid base64: {exc}")
+              sys.exit(1)
+
+          if not decoded.startswith("untrusted comment:"):
+              print("::error::Decoded updater key does not start with the expected Tauri key header")
+              sys.exit(1)
+          PY
+
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<EOF"
+            echo "$secret"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Build and publish
         uses: tauri-apps/tauri-action@v0
         env:
@@ -96,6 +137,11 @@ jobs:
             - macOS 10.13+
             - Windows 10+
             - Ubuntu 20.04+ / Debian 11+（需 `libwebkit2gtk-4.1-0`）
+
+            ### 应用内更新
+
+            已安装旧版本的用户，启动应用后会在顶部看到「下载更新」按钮，点击即可下载安装并自动重启。
           releaseDraft: false
           prerelease: false
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}

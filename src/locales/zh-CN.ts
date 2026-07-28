@@ -129,5 +129,7 @@ export default {
   // --- 应用更新（ui.update.*）------------------------------------------
   'ui.update.available': '发现新版本 {version}',
   'ui.update.download': '下载更新',
-  'ui.update.tooltip': '点击前往下载 {version}'
+  'ui.update.installing': '正在安装…',
+  'ui.update.downloadFailed': '更新失败：{error}',
+  'ui.update.tooltip': '点击下载并安装 {version}（安装后自动重启）'
 } as const
