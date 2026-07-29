@@ -137,6 +137,29 @@ export default {
   'ui.stats.calls': '次调用',
   'ui.stats.noData': '今天还没有 AI 活动哦~',
 
+  // --- 市场网络代理（ui.proxy.*）-----------------------------------------
+  'ui.proxy.title': '网络代理',
+  'ui.proxy.mode.auto': '自动（Clash 默认）',
+  'ui.proxy.mode.direct': '直连（不使用代理）',
+  'ui.proxy.mode.custom': '自定义',
+  'ui.proxy.customPlaceholder': 'http://127.0.0.1:7890',
+  'ui.proxy.apply': '应用',
+  'ui.proxy.test': '测试连接',
+  'ui.proxy.connected': '连接正常（{ms}ms）',
+  'ui.proxy.failed': '连接失败：{error}',
+  'ui.proxy.marketError': '无法连接宠物市场，请检查网络代理设置（建议使用 Clash 默认端口 7890）',
+
+  // --- 本地导入（ui.pet.import*）-----------------------------------------
+  'ui.pet.import': '导入宠物',
+  'ui.pet.importSuccess': '已导入「{name}」并设为当前宠物',
+  'ui.pet.importFailed': '导入失败：{error}',
+  'ui.pet.tag.uploaded': '已上传',
+
+  // --- 删除（ui.pet.delete*）---------------------------------------------
+  'ui.pet.deleteConfirm': '确定要删除「{name}」吗？',
+  'ui.pet.deleteSuccess': '已删除宠物',
+  'ui.pet.deleteBuiltin': '内置宠物不能删除',
+
   // --- 设置项（ui.settings.*）-------------------------------------------
   'ui.settings.title': '设置',
   'ui.settings.language': '语言',

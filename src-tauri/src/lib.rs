@@ -49,6 +49,8 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // 文件选择器（导入本地宠物精灵图）。
+        .plugin(tauri_plugin_dialog::init())
         // 应用内更新：process 提供重启能力，updater 提供下载安装能力。
         .plugin(tauri_plugin_process::init())
         .plugin({
@@ -125,6 +127,11 @@ pub fn run() {
             desktop_pet::delete_local_pet,
             desktop_pet::get_pet_spritesheet_path,
             desktop_pet::fetch_remote_spritesheet,
+            desktop_pet::import_local_pet,
+            // 市场网络代理
+            desktop_pet::get_market_proxy_config,
+            desktop_pet::set_market_proxy,
+            desktop_pet::test_market_connection,
             // 宠物悬浮窗口控制
             desktop_pet::show_pet_window,
             desktop_pet::hide_pet_window,

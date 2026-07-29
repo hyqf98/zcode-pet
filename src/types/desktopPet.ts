@@ -39,8 +39,8 @@ export interface LocalPetInfo {
   description?: string | null
   kind?: string | null
   tags: string[]
-  /** 'builtin'（内置打包）或 'downloaded'（用户下载）。 */
-  source: 'builtin' | 'downloaded' | string
+  /** 'builtin'（内置打包）、'downloaded'（用户从市场下载）或 'uploaded'（本地导入）。 */
+  source: 'builtin' | 'downloaded' | 'uploaded' | string
   /** 精灵图绝对路径（前端用 convertFileSrc 转成可加载 URL）。 */
   spritesheetPath: string
   posterPath?: string | null
@@ -56,4 +56,23 @@ export interface CodexPetSearchParams {
   sort?: CodexPetSort
   page?: number
   pageSize?: number
+}
+
+// --- 市场网络代理 ----------------------------------------------------------
+
+/** 代理模式：auto（自动检测/Clash 默认）/ direct（直连）/ custom（自定义 URL）。 */
+export type ProxyMode = 'auto' | 'direct' | 'custom'
+
+/** 代理配置（镜像后端 ProxyConfig，camelCase）。 */
+export interface ProxyConfig {
+  mode: ProxyMode
+  customUrl: string
+}
+
+/** 市场连接测试结果。 */
+export interface MarketConnectionResult {
+  ok: boolean
+  latencyMs?: number | null
+  error?: string | null
+  proxyUsed?: string | null
 }

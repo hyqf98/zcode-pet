@@ -17,13 +17,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { usePetSettingsStore } from '@/stores/petSettings'
 import { useDesktopPetStore } from '@/stores/desktopPet'
 import { toLocalAssetUrl } from '@/services/desktopPet'
 import { useAppUpdate } from '@/composables/useAppUpdate'
 import type { AppLocale } from '@/locales'
 import { supportedLocales } from '@/locales'
-import type { CodexPetKind, CodexPetSort, LocalPetInfo } from '@/types/desktopPet'
+import type { CodexPetKind, CodexPetSort, LocalPetInfo, ProxyMode } from '@/types/desktopPet'
 import type { DetailPet } from './PetDetailModal/usePetDetailModal'
 
 /** 子 tab：我的宠物 / 宠物市场。 */
@@ -75,6 +76,16 @@ export function usePetManager() {
   /** 设置数据目录中。 */
   const zcodeDataDirSaving = ref(false)
 
+  // --- 市场网络代理 --------------------------------------------------------
+  /** 当前代理模式（auto / direct / custom）。 */
+  const proxyMode = ref<ProxyMode>('auto')
+  /** 自定义代理 URL（仅 custom 模式使用）。 */
+  const proxyCustomUrl = ref('')
+  /** 代理保存中。 */
+  const proxySaving = ref(false)
+  /** 连接测试中。 */
+  const connectionTesting = ref(false)
+
   // --- 选项 --------------------------------------------------------------
 
   const sortOptions = computed<Option[]>(() => [
@@ -103,6 +114,13 @@ export function usePetManager() {
   const movementModeOptions = computed<Option[]>(() => [
     { value: 'free', label: t('ui.pet.movementFree') },
     { value: 'fixed', label: t('ui.pet.movementFixed') }
+  ])
+
+  /** 代理模式下拉选项：自动（Clash 默认）/ 直连 / 自定义。 */
+  const proxyModeOptions = computed<Option[]>(() => [
+    { value: 'auto', label: t('ui.proxy.mode.auto') },
+    { value: 'direct', label: t('ui.proxy.mode.direct') },
+    { value: 'custom', label: t('ui.proxy.mode.custom') }
   ])
 
   /** 缩放滑块范围（与 PetView scale/100 一致）。 */
@@ -321,6 +339,87 @@ export function usePetManager() {
     }
   }
 
+  // --- handlers：市场代理 / 连接测试 / 导入 / 删除 ----------------------
+
+  /** 应用代理配置：保存到后端后立即测试连接。 */
+  async function handleSetProxy(): Promise<void> {
+    if (proxySaving.value) return
+    proxySaving.value = true
+    try {
+      await desktopPetStore.saveProxy(proxyMode.value, proxyCustomUrl.value.trim())
+      // 保存后立即测试连接 + 刷新市场列表。
+      await handleTestConnection()
+      await desktopPetStore.refreshRemote()
+    } catch (e) {
+      message.error(String(e instanceof Error ? e.message : e))
+    } finally {
+      proxySaving.value = false
+    }
+  }
+
+  /** 测试市场连通性，更新 store.marketConnection。 */
+  async function handleTestConnection(): Promise<void> {
+    if (connectionTesting.value) return
+    connectionTesting.value = true
+    try {
+      await desktopPetStore.checkMarketConnection()
+      const conn = desktopPetStore.marketConnection
+      if (conn && conn.ok) {
+        message.success(
+          t('ui.proxy.connected', { ms: conn.latencyMs ?? '?' }),
+          { duration: 3000 }
+        )
+      } else if (conn && !conn.ok) {
+        message.warning(
+          t('ui.proxy.failed', { error: conn.error ?? '' }),
+          { duration: 5000 }
+        )
+      }
+    } finally {
+      connectionTesting.value = false
+    }
+  }
+
+  /** 打开文件选择器导入本地宠物（PNG / WebP）。 */
+  async function handleImportPet(): Promise<void> {
+    try {
+      const selected = await openDialog({
+        title: t('ui.pet.import'),
+        multiple: false,
+        filters: [
+          { name: 'Image', extensions: ['png', 'webp'] }
+        ]
+      })
+      if (!selected || Array.isArray(selected)) return
+
+      const filePath = selected
+      // 用文件名（去扩展名）作为宠物名。
+      const fileName = filePath.split(/[\\/]/).pop() ?? 'imported'
+      const displayName = fileName.replace(/\.(png|webp)$/i, '')
+
+      const info = await desktopPetStore.importPet(filePath, displayName)
+      message.success(t('ui.pet.importSuccess', { name: info.displayName }))
+    } catch (e) {
+      message.error(t('ui.pet.importFailed', { error: e instanceof Error ? e.message : String(e) }))
+    }
+  }
+
+  /** 删除宠物（非内置），删除后 toast 反馈。 */
+  async function handleDeletePet(petId: string): Promise<void> {
+    try {
+      await desktopPetStore.removePet(petId)
+      message.success(t('ui.pet.deleteSuccess'))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      // 内置宠物删除被后端拒绝时给出友好提示。
+      if (msg.includes('内置')) {
+        message.error(t('ui.pet.deleteBuiltin'))
+      } else {
+        message.error(msg)
+      }
+    }
+  }
+
   /** 卡片快捷下载。 */
   async function handleQuickDownload(petId: string): Promise<void> {
     try {
@@ -373,6 +472,12 @@ export function usePetManager() {
     await desktopPetStore.loadLocalPets()
     await desktopPetStore.refreshRemote()
 
+    // 加载代理配置 + 测试市场连通性（供代理设置区显示状态）。
+    await desktopPetStore.loadProxyConfig()
+    proxyMode.value = desktopPetStore.proxyConfig.mode
+    proxyCustomUrl.value = desktopPetStore.proxyConfig.customUrl
+    void handleTestConnection()
+
     // 静默检测应用更新（失败不影响主流程；有新版本时顶部显示下载按钮）。
     void checkForAppUpdate()
   })
@@ -420,6 +525,12 @@ export function usePetManager() {
     zcodeDataDirInput,
     zcodeDataDirMissing,
     zcodeDataDirSaving,
+    // proxy
+    proxyModeOptions,
+    proxyMode,
+    proxyCustomUrl,
+    proxySaving,
+    connectionTesting,
     // handlers
     handleToggleEnabled,
     handleToggleAlwaysOnTop,
@@ -436,6 +547,10 @@ export function usePetManager() {
     handleMovementModeChange,
     handleToggleZCodeLink,
     handleSetZCodeDataDir,
+    handleSetProxy,
+    handleTestConnection,
+    handleImportPet,
+    handleDeletePet,
     // utils
     toLocalAssetUrl
   }

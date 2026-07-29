@@ -18,9 +18,11 @@ const {
   activeAction,
   canUse,
   canDownload,
+  canDelete,
   close,
   handleDownload,
   handleUse,
+  handleDelete,
   playAnim
 } = useDetailModal(props, emit as never)
 </script>
@@ -63,6 +65,10 @@ const {
                 v-else-if="pet.source === 'downloaded'"
                 class="pet-detail__badge pet-detail__badge--muted"
               >已安装</span>
+              <span
+                v-else-if="pet.source === 'uploaded'"
+                class="pet-detail__badge pet-detail__badge--muted"
+              >已上传</span>
             </div>
           </div>
 
@@ -88,6 +94,15 @@ const {
               v-else
               class="pet-detail__current"
             >使用中</span>
+            <n-button
+              v-if="canDelete"
+              size="small"
+              type="error"
+              ghost
+              @click="handleDelete"
+            >
+              删除
+            </n-button>
             <n-button
               size="small"
               quaternary

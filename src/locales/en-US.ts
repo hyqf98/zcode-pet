@@ -124,6 +124,29 @@ export default {
   'ui.stats.calls': ' calls',
   'ui.stats.noData': 'No AI activity today yet~',
 
+  // --- Market proxy (ui.proxy.*) -----------------------------------------
+  'ui.proxy.title': 'Network proxy',
+  'ui.proxy.mode.auto': 'Auto (Clash default)',
+  'ui.proxy.mode.direct': 'Direct (no proxy)',
+  'ui.proxy.mode.custom': 'Custom',
+  'ui.proxy.customPlaceholder': 'http://127.0.0.1:7890',
+  'ui.proxy.apply': 'Apply',
+  'ui.proxy.test': 'Test',
+  'ui.proxy.connected': 'Connected ({ms}ms)',
+  'ui.proxy.failed': 'Failed: {error}',
+  'ui.proxy.marketError': 'Cannot connect to pet market. Check your proxy settings (Clash default port: 7890).',
+
+  // --- Local import (ui.pet.import*) -------------------------------------
+  'ui.pet.import': 'Import pet',
+  'ui.pet.importSuccess': 'Imported "{name}" and set as current pet',
+  'ui.pet.importFailed': 'Import failed: {error}',
+  'ui.pet.tag.uploaded': 'Uploaded',
+
+  // --- Delete (ui.pet.delete*) -------------------------------------------
+  'ui.pet.deleteConfirm': 'Delete "{name}"?',
+  'ui.pet.deleteSuccess': 'Pet deleted',
+  'ui.pet.deleteBuiltin': 'Built-in pets cannot be deleted',
+
   // --- Settings (ui.settings.*) -----------------------------------------
   'ui.settings.title': 'Settings',
   'ui.settings.language': 'Language',

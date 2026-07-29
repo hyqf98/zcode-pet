@@ -11,18 +11,25 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   deleteLocalPet,
   downloadCodexPet,
+  getMarketProxyConfig,
   getPetSpritesheetUrl,
   hidePetWindow,
+  importLocalPet,
   listLocalPets,
   searchCodexPets,
+  setMarketProxy,
   setPetAlwaysOnTop,
-  showPetWindow
+  showPetWindow,
+  testMarketConnection
 } from '@/services/desktopPet'
 import type {
   CodexPetKind,
   CodexPetSort,
   CodexPetSummary,
-  LocalPetInfo
+  LocalPetInfo,
+  MarketConnectionResult,
+  ProxyConfig,
+  ProxyMode
 } from '@/types/desktopPet'
 import { usePetSettingsStore } from './petSettings'
 
@@ -33,7 +40,7 @@ import { usePetSettingsStore } from './petSettings'
  * 切换激活宠物时，通过 Tauri event `desktop-pet:switch` 通知宠物悬浮窗口重载精灵图。
  */
 
-export type { CodexPetKind, CodexPetSort, CodexPetSummary, LocalPetInfo }
+export type { CodexPetKind, CodexPetSort, CodexPetSummary, LocalPetInfo, ProxyMode }
 
 let unlistenSwitch: (() => void) | null = null
 
@@ -47,6 +54,7 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
   // 远程市场
   const remotePets = ref<CodexPetSummary[]>([])
   const remoteLoading = ref(false)
+  const remoteError = ref<string | null>(null)
   const remoteTotal = ref(0)
   const remotePage = ref(1)
   const remoteTotalPages = ref(0)
@@ -56,6 +64,10 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
 
   // 下载中
   const downloadingIds = ref<Set<string>>(new Set())
+
+  // 市场网络代理
+  const proxyConfig = ref<ProxyConfig>({ mode: 'auto', customUrl: '' })
+  const marketConnection = ref<MarketConnectionResult | null>(null)
 
   // 激活宠物 id（读写 petSettings，自动持久化）
   const activePetId = computed<string | null>({
@@ -118,11 +130,13 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
       remotePets.value = resp.pets
       remoteTotal.value = resp.total
       remoteTotalPages.value = resp.totalPages
+      remoteError.value = null
     } catch (error) {
       console.error('[desktopPet] search failed:', error)
       remotePets.value = []
       remoteTotal.value = 0
       remoteTotalPages.value = 0
+      remoteError.value = error instanceof Error ? error.message : String(error)
     } finally {
       remoteLoading.value = false
     }
@@ -166,6 +180,42 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
     await loadLocalPets()
     if (activePetId.value === petId) {
       activePetId.value = localPets.value[0]?.id ?? null
+    }
+  }
+
+  /** 从本地文件导入宠物，成功后刷新本地列表并设为激活。 */
+  async function importPet(filePath: string, displayName?: string): Promise<LocalPetInfo> {
+    const info = await importLocalPet(filePath, displayName)
+    await loadLocalPets()
+    await setActivePet(info.id)
+    return info
+  }
+
+  // --- 市场网络代理 --------------------------------------------------------
+
+  /** 加载代理配置（onMounted 调用）。 */
+  async function loadProxyConfig(): Promise<void> {
+    try {
+      proxyConfig.value = await getMarketProxyConfig()
+    } catch (e) {
+      console.error('[desktopPet] load proxy config failed:', e)
+    }
+  }
+
+  /** 设置代理并持久化，返回更新后的配置。 */
+  async function saveProxy(mode: string, customUrl: string): Promise<void> {
+    proxyConfig.value = await setMarketProxy(mode, customUrl)
+  }
+
+  /** 测试与宠物市场的连通性，结果存入 marketConnection。 */
+  async function checkMarketConnection(): Promise<void> {
+    try {
+      marketConnection.value = await testMarketConnection()
+    } catch (e) {
+      marketConnection.value = {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e)
+      }
     }
   }
 
@@ -225,6 +275,7 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
     // 远程
     remotePets,
     remoteLoading,
+    remoteError,
     remoteTotal,
     remotePage,
     remoteTotalPages,
@@ -232,6 +283,9 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
     remoteKind,
     remoteSort,
     downloadingIds,
+    // 代理
+    proxyConfig,
+    marketConnection,
     // actions
     loadLocalPets,
     setActivePet,
@@ -240,6 +294,10 @@ export const useDesktopPetStore = defineStore('desktopPet', () => {
     goToRemotePage,
     downloadPet,
     removePet,
+    importPet,
+    loadProxyConfig,
+    saveProxy,
+    checkMarketConnection,
     showPet,
     hidePet,
     setAlwaysOnTop,

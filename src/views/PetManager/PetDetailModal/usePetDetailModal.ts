@@ -40,11 +40,12 @@ export interface PetDetailModalEmits {
   (event: 'update:visible', value: boolean): void
   (event: 'download', petId: string): void
   (event: 'use', petId: string): void
+  (event: 'delete', petId: string): void
 }
 
 export function useDetailModal(
   props: PetDetailModalProps,
-  emit: (event: 'update:visible' | 'download' | 'use', ...args: unknown[]) => void
+  emit: (event: 'update:visible' | 'download' | 'use' | 'delete', ...args: unknown[]) => void
 ) {
   // 当前正在播放的动画行 id（空 = 自动漫游）。
   const activeAction = ref<string>('')
@@ -54,6 +55,9 @@ export function useDetailModal(
 
   const canUse = computed(() => props.pet?.installed && !props.isActive)
   const canDownload = computed(() => !props.pet?.installed)
+  const canDelete = computed(
+    () => props.pet?.installed && props.pet.source !== 'builtin'
+  )
 
   function close(): void {
     emit('update:visible', false)
@@ -69,6 +73,13 @@ export function useDetailModal(
   function handleUse(): void {
     if (props.pet) {
       emit('use', props.pet.id)
+    }
+    close()
+  }
+
+  function handleDelete(): void {
+    if (props.pet) {
+      emit('delete', props.pet.id)
     }
     close()
   }
@@ -93,9 +104,11 @@ export function useDetailModal(
     activeAction,
     canUse,
     canDownload,
+    canDelete,
     close,
     handleDownload,
     handleUse,
+    handleDelete,
     playAnim
   }
 }

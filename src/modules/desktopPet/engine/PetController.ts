@@ -44,6 +44,8 @@ export class PetController {
   // 画布逻辑尺寸（CSS px），由 resize 写入，供 ChatBubble.follow 做水平钳制与翻转判断。
   private canvasW = 300
   private canvasH = 320
+  /** 拖拽中标志：暂停大脑漫游，避免 brain.update 每帧覆盖拖拽写入的位置导致宠物跳动。 */
+  private dragging = false
 
   // 私有 —— 通过 PetController.create 组装，它在构造前异步加载初始精灵图并切片。
   private constructor(parts: {
@@ -132,7 +134,9 @@ export class PetController {
   update(deltaMs: number): void {
     // 用户触发的动作播放期间暂停漫游大脑，使 walk/idle 切换不会切断动画或把快照从
     // 冻结精灵下抽走。精灵自己的 update 仍推进其时钟；只有漫游状态机被持有。
-    if (!this.sprite.isActionPlaying) {
+    // 拖拽期间也暂停大脑：避免 brain.update 每帧重新派生 snapshot.position 覆盖
+    // dragTo 写入的指针位置，导致宠物与气泡不同步 / 突然跳动。
+    if (!this.sprite.isActionPlaying && !this.dragging) {
       this.snapshot = this.brain.update(deltaMs)
     }
     this.sprite.update(this.snapshot, deltaMs)
@@ -199,10 +203,26 @@ export class PetController {
    * 并进入 idle，松手后漫游状态机从该位置重新决策。
    *
    * 跨屏迁移器在迁移窗口后也用此方法重映射宠物坐标（保持物理坐标连续）。
+   *
+   * 设置 dragging 标志：暂停大脑漫游避免覆盖位置；同步更新聊天气泡位置使其与精灵
+   * 在拖拽时完全同步（无逐帧延迟）。
    */
   dragTo(x: number, y: number): void {
+    this.dragging = true
     this.snapshot = this.brain.setPosition({ x, y })
     this.sprite.update(this.snapshot, 0)
+    // 拖拽时同步更新气泡位置（不等 ticker），使气泡与精灵严格同步。
+    if (this.chatBubble.isVisible) {
+      this.chatBubble.follow(this.snapshot.position.x, this.snapshot.position.y, this.sprite.heightPx, {
+        canvasWidth: this.canvasW,
+        canvasHeight: this.canvasH,
+      } satisfies ChatBubbleBounds)
+    }
+  }
+
+  /** 结束拖拽：恢复大脑漫游。松开鼠标后调用。 */
+  endDrag(): void {
+    this.dragging = false
   }
 
   /**

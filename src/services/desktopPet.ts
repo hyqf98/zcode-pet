@@ -8,7 +8,9 @@ import type {
   CodexPetListResponse,
   CodexPetSearchParams,
   CodexPetSummary,
-  LocalPetInfo
+  LocalPetInfo,
+  MarketConnectionResult,
+  ProxyConfig
 } from '@/types/desktopPet'
 
 /** 搜索 codex-pets.net 宠物市场。 */
@@ -89,4 +91,37 @@ export async function setPetAlwaysOnTop(alwaysOnTop: boolean): Promise<void> {
 export async function fetchRemoteSpritesheetUrl(petId: string, url: string): Promise<string> {
   const path = await invoke<string>('fetch_remote_spritesheet', { petId, url })
   return convertFileSrc(path)
+}
+
+// --- 本地导入 -------------------------------------------------------------
+
+/** 从本地文件导入宠物精灵图（PNG / WebP）。返回落地信息。 */
+export async function importLocalPet(
+  filePath: string,
+  displayName?: string
+): Promise<LocalPetInfo> {
+  return invoke<LocalPetInfo>('import_local_pet', {
+    filePath,
+    displayName: displayName ?? null
+  })
+}
+
+// --- 市场网络代理 ----------------------------------------------------------
+
+/** 读取当前市场代理配置。 */
+export async function getMarketProxyConfig(): Promise<ProxyConfig> {
+  return invoke<ProxyConfig>('get_market_proxy_config')
+}
+
+/** 设置市场代理配置并持久化。 */
+export async function setMarketProxy(
+  mode: string,
+  customUrl: string
+): Promise<ProxyConfig> {
+  return invoke<ProxyConfig>('set_market_proxy', { mode, customUrl })
+}
+
+/** 测试与 codex-pets.net 的网络连通性。 */
+export async function testMarketConnection(): Promise<MarketConnectionResult> {
+  return invoke<MarketConnectionResult>('test_market_connection')
 }

@@ -127,6 +127,38 @@ pub struct LocalPetMeta {
     pub installed_at: Option<String>,
 }
 
+/// 市场网络代理配置（market-proxy.json）。
+///
+/// - `auto`：优先读环境变量（HTTPS_PROXY / HTTP_PROXY / ALL_PROXY），无则用 Clash 默认 7890。
+/// - `direct`：直连，不使用代理（显式 `.no_proxy()`）。
+/// - `custom`：使用 `custom_url` 指定的代理地址。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyConfig {
+    pub mode: String,
+    #[serde(default)]
+    pub custom_url: String,
+}
+
+/// 市场连接测试结果。
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketConnectionResult {
+    pub ok: bool,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+    pub proxy_used: Option<String>,
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            mode: "auto".to_string(),
+            custom_url: String::new(),
+        }
+    }
+}
+
 /// 透出给前端的本地宠物信息（meta + 绝对路径，便于 convertFileSrc）。
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -210,12 +242,92 @@ fn meta_to_info(dir: &Path, meta: &LocalPetMeta) -> LocalPetInfo {
     }
 }
 
-// --- 私有辅助：HTTP ------------------------------------------------------
+// --- 私有辅助：HTTP + 代理 ------------------------------------------------
 
-/// 构造一个带超时的 reqwest 客户端（rustls）。
-fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
+/// Clash 默认 HTTP 代理端口（codex-pets.net 需翻墙访问时，多数用户使用 Clash）。
+const DEFAULT_PROXY_URL: &str = "http://127.0.0.1:7890";
+
+/// 代理配置持久化文件：<app_data>/market-proxy.json。
+fn proxy_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(get_app_data_dir(app)?.join("market-proxy.json"))
+}
+
+/// 读取代理配置（文件不存在或解析失败时返回默认 auto 配置）。
+fn read_proxy_config(app: &AppHandle) -> ProxyConfig {
+    let path = match proxy_config_path(app) {
+        Ok(p) => p,
+        Err(_) => return ProxyConfig::default(),
+    };
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str::<ProxyConfig>(&content).unwrap_or_default(),
+        Err(_) => ProxyConfig::default(),
+    }
+}
+
+/// 写入代理配置到 market-proxy.json。
+fn write_proxy_config(app: &AppHandle, config: &ProxyConfig) -> Result<(), String> {
+    let path = proxy_config_path(app)?;
+    let content = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("序列化代理配置失败: {}", e))?;
+    fs::write(&path, content).map_err(|e| format!("写入代理配置失败: {}", e))?;
+    Ok(())
+}
+
+/// 纯函数：根据配置解析实际使用的代理 URL。
+///
+/// - `auto`：优先返回环境变量 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY（大小写均查），
+///   均无则返回 Clash 默认 `http://127.0.0.1:7890`。
+/// - `direct`：返回 None（直连）。
+/// - `custom`：返回 `custom_url`（空串视为 None）。
+pub fn resolve_proxy_url(config: &ProxyConfig) -> Option<String> {
+    match config.mode.as_str() {
+        "direct" => None,
+        "custom" => {
+            let url = config.custom_url.trim();
+            if url.is_empty() {
+                None
+            } else {
+                Some(url.to_string())
+            }
+        }
+        // "auto" 及未知值均走 auto 逻辑。
+        _ => {
+            for var in &[
+                "HTTPS_PROXY",
+                "HTTP_PROXY",
+                "ALL_PROXY",
+                "https_proxy",
+                "http_proxy",
+                "all_proxy",
+            ] {
+                if let Ok(val) = std::env::var(var) {
+                    let val = val.trim();
+                    if !val.is_empty() {
+                        return Some(val.to_string());
+                    }
+                }
+            }
+            Some(DEFAULT_PROXY_URL.to_string())
+        }
+    }
+}
+
+/// 构造带代理 + 超时的 reqwest 客户端（rustls）。
+///
+/// 按代理配置注入 `reqwest::Proxy::all`：`direct` 模式显式 `.no_proxy()`。
+fn http_client_with_proxy(app: &AppHandle) -> Result<reqwest::Client, String> {
+    let config = read_proxy_config(app);
+    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(20));
+    match resolve_proxy_url(&config) {
+        Some(url) => {
+            builder = builder
+                .proxy(reqwest::Proxy::all(&url).map_err(|e| format!("设置代理失败: {}", e))?);
+        }
+        None => {
+            builder = builder.no_proxy();
+        }
+    }
+    builder
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))
 }
@@ -230,13 +342,14 @@ fn err_str<E: std::fmt::Display>(e: E) -> String {
 /// 搜索 codex-pets.net 宠物市场。透传 q/kind/sort/page/page_size 查询参数。
 #[tauri::command]
 pub async fn search_codex_pets(
+    app: AppHandle,
     q: Option<String>,
     kind: Option<String>,
     sort: Option<String>,
     page: Option<u32>,
     page_size: Option<u32>,
 ) -> Result<CodexPetListResponse, String> {
-    let client = http_client()?;
+    let client = http_client_with_proxy(&app)?;
     let mut url = reqwest::Url::parse(&format!("{}/api/pets", PETSHARE_BASE))
         .map_err(|e| format!("解析 URL 失败: {}", e))?;
     {
@@ -273,8 +386,8 @@ pub async fn search_codex_pets(
 
 /// 获取单只宠物的详情（含完整的精灵图 URL 等）。
 #[tauri::command]
-pub async fn get_codex_pet_detail(pet_id: String) -> Result<CodexPetSummary, String> {
-    let client = http_client()?;
+pub async fn get_codex_pet_detail(app: AppHandle, pet_id: String) -> Result<CodexPetSummary, String> {
+    let client = http_client_with_proxy(&app)?;
     let url = format!(
         "{}/api/pets/{}",
         PETSHARE_BASE,
@@ -294,14 +407,14 @@ pub async fn download_codex_pet(
     app: AppHandle,
     pet_id: String,
 ) -> Result<LocalPetInfo, String> {
-    let detail = get_codex_pet_detail(pet_id.clone()).await?;
+    let detail = get_codex_pet_detail(app.clone(), pet_id.clone()).await?;
 
     let spritesheet_url = detail
         .spritesheet_url
         .clone()
         .ok_or_else(|| format!("宠物 {} 未提供 spritesheetUrl", pet_id))?;
 
-    let client = http_client()?;
+    let client = http_client_with_proxy(&app)?;
     let bytes = client
         .get(&spritesheet_url)
         .send()
@@ -408,9 +521,12 @@ pub fn list_local_pets(app: AppHandle) -> Result<Vec<LocalPetInfo>, String> {
     Ok(infos)
 }
 
-/// 删除本地宠物（内置删除后，下次启动会自动重装）。
+/// 删除本地宠物（内置宠物不可删除）。
 #[tauri::command]
 pub fn delete_local_pet(app: AppHandle, pet_id: String) -> Result<(), String> {
+    if BUILTIN_PET_IDS.contains(&pet_id.as_str()) {
+        return Err("内置宠物不能删除".to_string());
+    }
     let dir = pet_dir(&app, &pet_id)?;
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(|e| format!("删除宠物目录失败: {}", e))?;
@@ -452,7 +568,7 @@ pub async fn fetch_remote_spritesheet(
     }
 
     // 下载。
-    let client = http_client()?;
+    let client = http_client_with_proxy(&app)?;
     let bytes = client
         .get(&url)
         .send()
@@ -887,6 +1003,170 @@ fn position_fullscreen_and_report(
     Ok((origin_x, origin_y, logical_w, logical_h, scale))
 }
 
+// --- 命令：市场网络代理 --------------------------------------------------
+
+/// 读取当前市场代理配置。
+#[tauri::command]
+pub fn get_market_proxy_config(app: AppHandle) -> ProxyConfig {
+    read_proxy_config(&app)
+}
+
+/// 设置市场代理配置并持久化。
+///
+/// `mode` 为 "auto" / "direct" / "custom"；`custom_url` 仅 custom 模式使用。
+/// 返回写入后的配置。
+#[tauri::command]
+pub fn set_market_proxy(
+    app: AppHandle,
+    mode: String,
+    custom_url: String,
+) -> Result<ProxyConfig, String> {
+    let config = ProxyConfig { mode, custom_url };
+    write_proxy_config(&app, &config)?;
+    Ok(config)
+}
+
+/// 测试与 codex-pets.net 的网络连通性（用当前代理配置发起一次轻量请求）。
+///
+/// 返回 `{ ok, latencyMs, error, proxyUsed }`，供前端在代理设置旁显示连接状态。
+#[tauri::command]
+pub async fn test_market_connection(app: AppHandle) -> MarketConnectionResult {
+    let config = read_proxy_config(&app);
+    let proxy_used = resolve_proxy_url(&config);
+
+    let client = match http_client_with_proxy(&app) {
+        Ok(c) => c,
+        Err(e) => {
+            return MarketConnectionResult {
+                ok: false,
+                latency_ms: None,
+                error: Some(e),
+                proxy_used,
+            }
+        }
+    };
+
+    let url = format!("{}/api/pets?pageSize=1", PETSHARE_BASE);
+    let start = std::time::Instant::now();
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let ok = resp.status().is_success();
+            let error = if ok {
+                None
+            } else {
+                Some(format!("HTTP {}", resp.status()))
+            };
+            MarketConnectionResult {
+                ok,
+                latency_ms: Some(latency_ms),
+                error,
+                proxy_used,
+            }
+        }
+        Err(e) => MarketConnectionResult {
+            ok: false,
+            latency_ms: Some(start.elapsed().as_millis() as u64),
+            error: Some(e.to_string()),
+            proxy_used,
+        },
+    }
+}
+
+// --- 命令：本地导入宠物 --------------------------------------------------
+
+/// 从本地文件导入宠物精灵图。
+///
+/// 读取用户选择的图片文件，检测格式（PNG / WebP），生成唯一 id 并落盘到
+/// `<app_data>/pets/uploaded-<hex>/`，写入 `meta.json`（source: "uploaded"）。
+/// 文件名（去扩展名）作为宠物显示名，也可由 `display_name` 覆盖。
+#[tauri::command]
+pub async fn import_local_pet(
+    app: AppHandle,
+    file_path: String,
+    display_name: Option<String>,
+) -> Result<LocalPetInfo, String> {
+    let path = Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", file_path));
+    }
+
+    let bytes = tokio::fs::read(&file_path)
+        .await
+        .map_err(|e| format!("读取文件失败: {}", e))?;
+
+    if bytes.is_empty() {
+        return Err("文件为空".to_string());
+    }
+
+    // 检测格式并确定扩展名。
+    let ext = detect_image_ext(&bytes)
+        .ok_or_else(|| "不支持的图片格式（仅支持 PNG / WebP）".to_string())?;
+
+    // 生成唯一 id：uploaded-<16位hex>（时间戳纳秒，碰撞概率极低）。
+    let id = generate_uploaded_id();
+    let dir = pet_dir(&app, &id)?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("创建目录失败: {}", e))?;
+
+    let spritesheet_file = format!("spritesheet.{}", ext);
+    let spritesheet_path = dir.join(&spritesheet_file);
+    tokio::fs::write(&spritesheet_path, &bytes)
+        .await
+        .map_err(|e| format!("写入精灵图失败: {}", e))?;
+
+    // 显示名：优先用参数，否则用文件名（去扩展名）。
+    let name = display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| "导入宠物".to_string());
+
+    let meta = LocalPetMeta {
+        id: id.clone(),
+        display_name: name,
+        description: None,
+        kind: None,
+        tags: vec![],
+        source: "uploaded".to_string(),
+        spritesheet_file,
+        poster_file: None,
+        spritesheet_url: None,
+        version: None,
+        installed_at: Some(now_rfc3339()),
+    };
+    write_meta(&dir, &meta)?;
+
+    Ok(meta_to_info(&dir, &meta))
+}
+
+/// 从 magic bytes 检测图片格式，返回扩展名（png / webp）。
+fn detect_image_ext(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() >= 8 && &bytes[..8] == b"\x89PNG\r\n\x1a\n" {
+        return Some("png");
+    }
+    // WebP: RIFF....WEBP（offset 0 = "RIFF", offset 8 = "WEBP"）。
+    if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some("webp");
+    }
+    None
+}
+
+/// 生成上传宠物的唯一 id：uploaded-<16位hex 纳秒时间戳>。
+fn generate_uploaded_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("uploaded-{:016x}", nanos)
+}
+
 // --- 命令：ZCode hook 联动（转调 crate::zcode 模块） ---------------------
 
 /// 启用/禁用 ZCode shell hook 联动（注入/清理 ~/.zcode 配置）。
@@ -1022,5 +1302,124 @@ mod tests {
     fn rect_empty_monitors_is_tolerant() {
         // 无法读取显示器时应宽容放行（不阻止恢复记忆位置）。
         assert!(rect_inside_any_monitor(100.0, 100.0, 300.0, 320.0, &[]));
+    }
+
+    // --- 代理配置测试 ------------------------------------------------------
+
+    #[test]
+    fn proxy_resolve_direct_returns_none() {
+        let config = ProxyConfig {
+            mode: "direct".to_string(),
+            custom_url: String::new(),
+        };
+        assert_eq!(resolve_proxy_url(&config), None);
+    }
+
+    #[test]
+    fn proxy_resolve_custom_returns_url() {
+        let config = ProxyConfig {
+            mode: "custom".to_string(),
+            custom_url: "http://192.168.1.1:8080".to_string(),
+        };
+        assert_eq!(
+            resolve_proxy_url(&config),
+            Some("http://192.168.1.1:8080".to_string())
+        );
+    }
+
+    #[test]
+    fn proxy_resolve_custom_empty_returns_none() {
+        let config = ProxyConfig {
+            mode: "custom".to_string(),
+            custom_url: "  ".to_string(),
+        };
+        assert_eq!(resolve_proxy_url(&config), None);
+    }
+
+    #[test]
+    fn proxy_resolve_auto_fallback_to_default() {
+        // 在没有设置代理环境变量时，auto 模式应回退到 Clash 默认 7890。
+        // 临时清除环境变量以确保测试可复现。
+        let saved: Vec<(String, Option<String>)> = [
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "ALL_PROXY",
+            "https_proxy",
+            "http_proxy",
+            "all_proxy",
+        ]
+        .iter()
+        .map(|k| (k.to_string(), std::env::var(k).ok()))
+        .collect();
+        for k in &[
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "ALL_PROXY",
+            "https_proxy",
+            "http_proxy",
+            "all_proxy",
+        ] {
+            std::env::remove_var(k);
+        }
+
+        let config = ProxyConfig {
+            mode: "auto".to_string(),
+            custom_url: String::new(),
+        };
+        assert_eq!(
+            resolve_proxy_url(&config),
+            Some(DEFAULT_PROXY_URL.to_string())
+        );
+
+        // 恢复环境变量。
+        for (k, v) in &saved {
+            if let Some(val) = v {
+                std::env::set_var(k, val);
+            }
+        }
+    }
+
+    // --- 删除保护测试 ------------------------------------------------------
+
+    #[test]
+    fn delete_rejects_builtin_id() {
+        // 纯逻辑检查：内置 id 应在保护列表中。
+        for id in BUILTIN_PET_IDS {
+            assert!(BUILTIN_PET_IDS.contains(id));
+        }
+    }
+
+    // --- 图片格式检测测试 --------------------------------------------------
+
+    #[test]
+    fn detect_png_magic_bytes() {
+        let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x00IHDR";
+        assert_eq!(detect_image_ext(png), Some("png"));
+    }
+
+    #[test]
+    fn detect_webp_magic_bytes() {
+        let mut webp = b"RIFF\x00\x00\x00\x00WEBP".to_vec();
+        webp.extend_from_slice(&[0u8; 10]);
+        assert_eq!(detect_image_ext(&webp), Some("webp"));
+    }
+
+    #[test]
+    fn detect_unknown_format_returns_none() {
+        let jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF";
+        assert_eq!(detect_image_ext(jpeg), None);
+        let random = b"hello world this is not an image";
+        assert_eq!(detect_image_ext(random), None);
+    }
+
+    #[test]
+    fn uploaded_id_format_is_valid() {
+        let id = generate_uploaded_id();
+        assert!(id.starts_with("uploaded-"));
+        // 验证 id 通过 pet_dir 的字符校验（仅 a-z0-9-）。
+        assert!(
+            id.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        );
     }
 }

@@ -136,8 +136,9 @@ export class PetSprite {
     const bounceOffset = Math.round(reactionStrength * 12)
 
     // 覆盖期间宠物钉在冻结位置；否则跟随大脑的漫游位置。
+    // 使用亚像素坐标（不取整），使精灵与聊天气泡同步平滑跟随，消除逐像素跳变的卡顿感。
     const pos = isOverriding && this.frozenPosition ? this.frozenPosition : snapshot.position
-    this.view.position.set(Math.round(pos.x), Math.round(pos.y))
+    this.view.position.set(pos.x, pos.y)
     this.shadow.scale.set(1 - reactionStrength * 0.18, 1 - reactionStrength * 0.08)
     this.shadow.alpha = 0.55 + reactionStrength * 0.12
     this.sprite.y = -bounceOffset

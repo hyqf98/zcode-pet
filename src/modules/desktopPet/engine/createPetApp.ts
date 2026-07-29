@@ -49,6 +49,8 @@ export interface PetApp {
    * 拖不到屏外/死区。松手后从该位置继续漫游。
    */
   dragTo: (x: number, y: number) => void
+  /** 结束拖拽：恢复大脑漫游（拖拽期间被暂停以避免位置覆盖）。松手后调用。 */
+  endDrag: () => void
   /**
    * 设置漫游模式：'free' 自由漫游（默认）/ 'fixed' 固定位置（不走步，可拖动）。
    */
@@ -197,6 +199,7 @@ export async function createPetApp(
     getPetBounds: () => pet.getPetBounds(),
     resize: syncViewport,
     dragTo: (x, y) => pet.dragTo(x, y),
+    endDrag: () => pet.endDrag(),
     setMovementMode: (mode) => pet.setMovementMode(mode),
     showChat: () => pet.showChat(),
     appendChatToken: (token) => pet.appendChatToken(token),

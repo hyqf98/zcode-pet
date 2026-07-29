@@ -15,6 +15,7 @@ const {
   kindOptions,
   languageOptions,
   movementModeOptions,
+  proxyModeOptions,
   scaleMin,
   scaleMax,
   scaleStep,
@@ -29,11 +30,16 @@ const {
   zcodeDbPath,
   zcodeDataDirInput,
   zcodeDataDirSaving,
+  proxyMode,
+  proxyCustomUrl,
+  proxySaving,
+  connectionTesting,
   handleToggleEnabled,
   openLocalDetail,
   openRemoteDetail,
   handleDetailDownload,
   handleDetailUse,
+  handleDeletePet,
   handleSearchSubmit,
   handleFilterChange,
   handleQuickDownload,
@@ -41,6 +47,9 @@ const {
   handleScaleChange,
   handleMovementModeChange,
   handleSetZCodeDataDir,
+  handleSetProxy,
+  handleTestConnection,
+  handleImportPet,
   toLocalAssetUrl
 } = usePetManager()
 </script>
@@ -203,6 +212,50 @@ const {
             >{{ t('ui.stats.dataDirApply') }}</n-button>
           </div>
         </div>
+
+        <!-- 网络代理（codex-pets.net 市场需要翻墙，默认 Clash 7890） -->
+        <div class="pm-setting pm-setting--wide">
+          <div class="pm-setting__head">
+            <span class="pm-setting__label">{{ t('ui.proxy.title') }}</span>
+            <!-- 连接状态指示 -->
+            <span
+              v-if="desktopPetStore.marketConnection"
+              :class="desktopPetStore.marketConnection.ok
+                ? 'pm-setting__value pm-setting__value--ok'
+                : 'pm-setting__value pm-setting__value--warn'"
+            >
+              {{ desktopPetStore.marketConnection.ok
+                ? '✓ ' + t('ui.proxy.connected', { ms: desktopPetStore.marketConnection.latencyMs ?? '?' })
+                : '✗ ' + t('ui.proxy.failed', { error: desktopPetStore.marketConnection.error ?? '' }) }}
+            </span>
+          </div>
+          <div class="pm-datadir-input">
+            <n-select
+              v-model:value="proxyMode"
+              :options="proxyModeOptions"
+              size="small"
+              class="pm-setting__control--proxy-mode"
+            />
+            <n-input
+              v-if="proxyMode === 'custom'"
+              v-model:value="proxyCustomUrl"
+              :placeholder="t('ui.proxy.customPlaceholder')"
+              size="small"
+              clearable
+            />
+            <n-button
+              size="small"
+              :loading="proxySaving"
+              @click="handleSetProxy"
+            >{{ t('ui.proxy.apply') }}</n-button>
+            <n-button
+              size="small"
+              :loading="connectionTesting"
+              quaternary
+              @click="handleTestConnection"
+            >{{ t('ui.proxy.test') }}</n-button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -232,6 +285,18 @@ const {
       v-if="activeSubTab === 'local'"
       class="pm-panel"
     >
+      <!-- 列表头部：导入按钮 -->
+      <div class="pm-list__header">
+        <span class="pm-list__count">{{ desktopPetStore.localPets.length }} 只宠物</span>
+        <n-button
+          size="small"
+          type="primary"
+          ghost
+          @click="handleImportPet"
+        >
+          + {{ t('ui.pet.import') }}
+        </n-button>
+      </div>
       <div class="pm-list">
         <div
           v-if="desktopPetStore.localPets.length === 0"
@@ -261,6 +326,10 @@ const {
                 class="pm-card__tag"
               >内置</span>
               <span
+                v-else-if="pet.source === 'uploaded'"
+                class="pm-card__tag pm-card__tag--done"
+              >已上传</span>
+              <span
                 v-if="pet.id === desktopPetStore.activePetId"
                 class="pm-card__tag pm-card__tag--active"
               >使用中</span>
@@ -282,6 +351,15 @@ const {
       v-else
       class="pm-panel"
     >
+      <!-- 市场连接失败警告条 -->
+      <div
+        v-if="desktopPetStore.marketConnection && !desktopPetStore.marketConnection.ok"
+        class="pm-market-error"
+        role="alert"
+      >
+        ⚠️ {{ t('ui.proxy.marketError') }}{{ desktopPetStore.marketConnection.error ? '：' + desktopPetStore.marketConnection.error : '' }}
+      </div>
+
       <!-- 筛选栏（固定不滚） -->
       <div class="pm-filters">
         <n-input
@@ -420,6 +498,7 @@ const {
       @update:visible="detailVisible = $event"
       @download="handleDetailDownload"
       @use="handleDetailUse"
+      @delete="handleDeletePet"
     />
   </main>
 </template>

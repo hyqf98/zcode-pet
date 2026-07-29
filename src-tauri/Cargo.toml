@@ -1,6 +1,6 @@
 [package]
 name = "zcode_pet"
-version = "1.0.2"
+version = "1.0.3"
 description = "ZCode Pet - 桌面宠物应用（独立 Tauri 2 应用）"
 authors = ["hyqf"]
 edition = "2021"
@@ -21,6 +21,8 @@ tauri-build = { version = "2", features = [] }
 # - tray-icon: 系统托盘（TrayIconBuilder / menu）
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
 tauri-plugin-opener = "2"
+# 文件选择器（导入本地宠物精灵图）
+tauri-plugin-dialog = "2"
 # 应用内自动更新（配合 GitHub Release 签名验证）
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

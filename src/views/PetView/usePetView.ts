@@ -474,7 +474,11 @@ export function usePetView() {
     const wasDragging = dragging.value
     pointerArmed.value = false
     dragging.value = false
-    if (wasDragging) return
+    if (wasDragging) {
+      // 拖拽结束：恢复大脑漫游（拖拽期间被暂停以避免位置覆盖）。
+      petApp.value?.endDrag()
+      return
+    }
 
     const app = petApp.value
     if (!app) return
