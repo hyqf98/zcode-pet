@@ -19,6 +19,8 @@ export class PetBrain {
   private stateElapsedMs = 0
   private stateDurationMs: number
   private movedThisFrame = false
+  // 固定模式：true 时禁止 idle→walk 转移，宠物停在原地（仅 idle / 环境动画 / 拖拽后停留）。
+  private fixed = false
 
   constructor(config: PetConfig, petBounds: PetBounds, rng: RandomSource = Math.random) {
     this.config = config
@@ -59,7 +61,13 @@ export class PetBrain {
         remainingMs -= step
 
         if (this.stateElapsedMs + EPSILON >= this.stateDurationMs) {
-          this.enterWalk()
+          // 固定模式：不进入 walk，重新 idle（停在原地）。大脑照常 tick，
+          // idle / 环境动画 / 跨屏迁移器照常工作，仅禁用走步。
+          if (this.fixed) {
+            this.enterIdle()
+          } else {
+            this.enterWalk()
+          }
         }
 
         continue
@@ -152,6 +160,17 @@ export class PetBrain {
   forceIdle(): PetSnapshot {
     this.enterIdle()
     return this.getSnapshot()
+  }
+
+  /**
+   * 设置固定模式。true：禁止走步，宠物停在原地（仍可被拖动，松手停留）。
+   * 切换到固定时立即进入 idle，停止当前行走。
+   */
+  setFixed(fixed: boolean): void {
+    this.fixed = fixed
+    if (fixed) {
+      this.enterIdle()
+    }
   }
 
   getSnapshot(): PetSnapshot {

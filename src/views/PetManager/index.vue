@@ -14,6 +14,7 @@ const {
   sortOptions,
   kindOptions,
   languageOptions,
+  movementModeOptions,
   scaleMin,
   scaleMax,
   scaleStep,
@@ -26,6 +27,9 @@ const {
   detailPet,
   zcodeLinked,
   zcodeToggling,
+  zcodeDbPath,
+  zcodeDataDirInput,
+  zcodeDataDirSaving,
   handleToggleEnabled,
   openLocalDetail,
   openRemoteDetail,
@@ -36,7 +40,9 @@ const {
   handleQuickDownload,
   handleLanguageChange,
   handleScaleChange,
+  handleMovementModeChange,
   handleToggleZCodeLink,
+  handleSetZCodeDataDir,
   toLocalAssetUrl
 } = usePetManager()
 </script>
@@ -137,6 +143,19 @@ const {
           />
         </div>
 
+        <!-- 漫游模式：自由走步 / 固定位置 -->
+        <div class="pm-setting">
+          <div class="pm-setting__head">
+            <span class="pm-setting__label">{{ t('ui.pet.movementMode') }}</span>
+          </div>
+          <n-select
+            :value="petSettings.movementMode"
+            :options="movementModeOptions"
+            class="pm-setting__control pm-setting__control--lang"
+            @update:value="handleMovementModeChange"
+          />
+        </div>
+
         <!-- 缩放 -->
         <div class="pm-setting">
           <div class="pm-setting__head">
@@ -166,6 +185,39 @@ const {
             />
           </div>
           <p class="pm-setting__hint">{{ t('ui.zcode.linkHint') }}</p>
+        </div>
+
+        <!-- ZCode 数据目录（token 统计用，自动检测，异常时可手动填） -->
+        <div class="pm-setting pm-setting--wide">
+          <div class="pm-setting__head">
+            <span class="pm-setting__label">{{ t('ui.stats.dataDir') }}</span>
+            <span
+              v-if="zcodeDbPath"
+              class="pm-setting__value pm-setting__value--ok"
+            >✓ {{ t('ui.stats.autoDetected') }}</span>
+            <span
+              v-else
+              class="pm-setting__value pm-setting__value--warn"
+            >⚠ {{ t('ui.stats.notDetected') }}</span>
+          </div>
+          <p
+            v-if="zcodeDbPath"
+            class="pm-setting__hint pm-setting__hint--mono"
+            :title="zcodeDbPath"
+          >{{ zcodeDbPath }}</p>
+          <div class="pm-datadir-input">
+            <n-input
+              v-model:value="zcodeDataDirInput"
+              :placeholder="t('ui.stats.dataDirPlaceholder')"
+              size="small"
+              clearable
+            />
+            <n-button
+              size="small"
+              :loading="zcodeDataDirSaving"
+              @click="handleSetZCodeDataDir"
+            >{{ t('ui.stats.dataDirApply') }}</n-button>
+          </div>
         </div>
       </div>
     </section>

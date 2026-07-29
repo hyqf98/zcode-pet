@@ -52,4 +52,11 @@ export interface NotificationSpec {
   instant?: boolean
   /** 最短展示时长 ms（防抖用，默认 1200）。 */
   minDisplayMs?: number
+  /**
+   * 是否在打字机完成后追加今日 token 用量统计行。
+   *
+   * 仅 Stop 事件设为 true：打字机渲染完 AI 响应后，异步查询 ZCode
+   * SQLite 库并追加 "📊 今日 3200万 tokens" 行到气泡尾部。
+   */
+  appendTokenStats?: boolean
 }

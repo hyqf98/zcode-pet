@@ -130,10 +130,16 @@ pub fn run() {
             desktop_pet::hide_pet_window,
             desktop_pet::toggle_pet_window,
             desktop_pet::set_pet_always_on_top,
+            // 多屏漫游：跨屏时迁移窗口到目标显示器
+            desktop_pet::move_pet_window_to_monitor,
             // ZCode hook 联动
             desktop_pet::link_zcode,
             desktop_pet::get_zcode_link_status,
             desktop_pet::check_node_available,
+            // ZCode token 使用量统计
+            desktop_pet::get_zcode_db_path,
+            desktop_pet::set_zcode_data_dir,
+            desktop_pet::get_zcode_token_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running zcode_pet application");

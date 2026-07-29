@@ -197,10 +197,21 @@ export class PetController {
   /**
    * 拖拽宠物到窗口内指定脚位（CSS px）。大脑内部 clamp 进 PetBounds（拖不到死区/屏外），
    * 并进入 idle，松手后漫游状态机从该位置重新决策。
+   *
+   * 跨屏迁移器在迁移窗口后也用此方法重映射宠物坐标（保持物理坐标连续）。
    */
   dragTo(x: number, y: number): void {
     this.snapshot = this.brain.setPosition({ x, y })
     this.sprite.update(this.snapshot, 0)
+  }
+
+  /**
+   * 设置漫游模式。
+   * - 'free'：自由漫游（默认），宠物按状态机自主走步。
+   * - 'fixed'：固定位置，禁止走步，宠物停在原地（可拖动，松手停留）。
+   */
+  setMovementMode(mode: 'free' | 'fixed'): void {
+    this.brain.setFixed(mode === 'fixed')
   }
 
   get footprint(): { halfWidth: number; height: number } {
@@ -208,6 +219,25 @@ export class PetController {
       halfWidth: this.sprite.halfWidthPx,
       height: this.sprite.heightPx,
     }
+  }
+
+  /**
+   * 返回宠物当前脚位（画布逻辑坐标，CSS px）。供跨屏迁移器计算物理坐标、判断是否跨屏。
+   */
+  getSnapshotForMigration(): { x: number; y: number } | null {
+    const p = this.snapshot.position
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return null
+    return { x: p.x, y: p.y }
+  }
+
+  /**
+   * 返回宠物当前活动边界（clamp 后的可达范围），供迁移器判断宠物是否贴边。
+   * 单屏模式下即当前屏的漫游 AABB。
+   */
+  get migrationBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const brain = (this as any).brain as { petBounds?: { aabb: { minX: number; minY: number; maxX: number; maxY: number } } } | undefined
+    return brain?.petBounds?.aabb ?? null
   }
 
   // --- 对话气泡（模拟 SSE，后续接入 ACP）-------------------------------

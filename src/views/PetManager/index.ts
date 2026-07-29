@@ -65,6 +65,16 @@ export function usePetManager() {
   /** 切换中（禁用 switch，防止重复 IPC）。 */
   const zcodeToggling = ref(false)
 
+  // --- ZCode 数据目录（token 统计用） ------------------------------------
+  /** 自动检测到的 DB 路径（展示给用户，证明自动检测已生效）。 */
+  const zcodeDbPath = ref<string | null>(null)
+  /** 用户手动输入的覆盖路径（空串=自动检测）。 */
+  const zcodeDataDirInput = ref('')
+  /** 路径检测是否失败（失败时高亮提示用户手动填）。 */
+  const zcodeDataDirMissing = ref(false)
+  /** 设置数据目录中。 */
+  const zcodeDataDirSaving = ref(false)
+
   // --- 选项 --------------------------------------------------------------
 
   const sortOptions = computed<Option[]>(() => [
@@ -87,6 +97,12 @@ export function usePetManager() {
   const languageOptions = computed<Option[]>(() => [
     { value: 'zh-CN', label: '中文' },
     { value: 'en-US', label: 'English' }
+  ])
+
+  /** 漫游模式下拉选项：自由（走步）/ 固定（不走步，停在原地）。 */
+  const movementModeOptions = computed<Option[]>(() => [
+    { value: 'free', label: t('ui.pet.movementFree') },
+    { value: 'fixed', label: t('ui.pet.movementFixed') }
   ])
 
   /** 缩放滑块范围（与 PetView scale/100 一致）。 */
@@ -219,6 +235,14 @@ export function usePetManager() {
   }
 
   /**
+   * 切换漫游模式（自由 / 固定）。仅写 store（持久化）；PetView 监听该字段实时应用到引擎，
+   * 无需重建 PetApp。管理窗口与宠物窗口经 localStorage 同步。
+   */
+  function handleMovementModeChange(value: 'free' | 'fixed'): void {
+    petSettings.movementMode = value
+  }
+
+  /**
    * 切换 ZCode shell hook 联动：调 `link_zcode(enabled)`，成功提示「新建会话生效」，
    * 失败回滚 switch 状态并 toast 报错。
    *
@@ -257,6 +281,29 @@ export function usePetManager() {
       message.error(String(e instanceof Error ? e.message : e))
     } finally {
       zcodeToggling.value = false
+    }
+  }
+
+  /** 设置 ZCode 数据目录覆盖路径（空串=恢复自动检测）。 */
+  async function handleSetZCodeDataDir(): Promise<void> {
+    if (zcodeDataDirSaving.value) return
+    zcodeDataDirSaving.value = true
+    try {
+      const dir = zcodeDataDirInput.value.trim()
+      const ok = await invoke<boolean>('set_zcode_data_dir', { dir: dir || null })
+      if (ok) {
+        // 重新拉取检测到的路径。
+        zcodeDbPath.value = await invoke<string | null>('get_zcode_db_path')
+        zcodeDataDirMissing.value = false
+        message.success(t('ui.stats.dataDirOk'))
+      } else {
+        zcodeDataDirMissing.value = true
+        message.warning(t('ui.stats.dataDirNotFound'))
+      }
+    } catch (e) {
+      message.error(t('ui.stats.dataDirError', { error: e instanceof Error ? e.message : String(e) }))
+    } finally {
+      zcodeDataDirSaving.value = false
     }
   }
 
@@ -300,6 +347,15 @@ export function usePetManager() {
       zcodeLinked.value = false
     }
 
+    // 检测 ZCode 数据目录（token 统计功能依赖）。
+    try {
+      const path = await invoke<string | null>('get_zcode_db_path')
+      zcodeDbPath.value = path
+      zcodeDataDirMissing.value = !path
+    } catch {
+      zcodeDataDirMissing.value = true
+    }
+
     await desktopPetStore.loadLocalPets()
     await desktopPetStore.refreshRemote()
 
@@ -327,6 +383,7 @@ export function usePetManager() {
     sortOptions,
     kindOptions,
     languageOptions,
+    movementModeOptions,
     scaleMin: SCALE_MIN,
     scaleMax: SCALE_MAX,
     scaleStep: SCALE_STEP,
@@ -344,6 +401,11 @@ export function usePetManager() {
     // zcode link
     zcodeLinked,
     zcodeToggling,
+    // zcode data dir
+    zcodeDbPath,
+    zcodeDataDirInput,
+    zcodeDataDirMissing,
+    zcodeDataDirSaving,
     // handlers
     handleToggleEnabled,
     handleToggleAlwaysOnTop,
@@ -357,7 +419,9 @@ export function usePetManager() {
     handleQuickDownload,
     handleLanguageChange,
     handleScaleChange,
+    handleMovementModeChange,
     handleToggleZCodeLink,
+    handleSetZCodeDataDir,
     // utils
     toLocalAssetUrl
   }

@@ -15,6 +15,7 @@
 pub mod hook_server;
 pub mod link;
 pub mod models;
+pub mod stats;
 
 pub use hook_server::start as start_hook_server;
 pub use link::{ensure_hook_script_installed, is_zcode_linked, set_zcode_linked, LinkResult};

@@ -16,7 +16,9 @@ import { getPetSpritesheetUrl, listLocalPets, setPetAlwaysOnTop } from '@/servic
 import { createPetApp, PET_ACTIONS } from '@/modules/desktopPet/engine'
 import type { PetApp } from '@/modules/desktopPet/engine'
 import type { LocalPetInfo } from '@/types/desktopPet'
+import type { TokenStats } from '@/types/tokenStats'
 import { chunkMessage, pickTimeBasedMessage } from '@/modules/desktopPet/chatSim'
+import { pickTokenCommentary } from '@/modules/desktopPet/tokenCommentary'
 import { useZCodePetEvents } from '@/composables/useZCodePetEvents'
 
 /**
@@ -50,6 +52,17 @@ const SLEEP_IDLE_MS = 90_000
 const SLEEP_ANIM_INTERVAL_MS = 10_000
 // 瞌睡状态轮询间隔。
 const IDLE_CHECK_INTERVAL_MS = 5_000
+// 单击显示 token 用量气泡的停留时长（ms）。
+const TOKEN_BUBBLE_LINGER_MS = 5000
+// 定时自动展示 token 用量的间隔（ms，每 5 分钟）。
+const TOKEN_AUTO_INTERVAL_MS = 5 * 60 * 1000
+
+/** 格式化 token 数为简短可读形式（与 useZCodePetEvents 一致）。 */
+function formatTokens(n: number): string {
+  if (n >= 100_000_000) return (n / 100_000_000).toFixed(1) + '亿'
+  if (n >= 10_000) return (n / 10_000).toFixed(1) + '万'
+  return n.toLocaleString()
+}
 
 export function usePetView() {
   const petSettings = usePetSettingsStore()
@@ -57,7 +70,7 @@ export function usePetView() {
   const windowManagerStore = useWindowManagerStore()
   // useI18n：宠物窗口自身的 locale 与其 petSettings.locale（启动时从 localStorage 读取）保持一致。
   // 多窗口（管理 / 宠物）各自独立 JS 上下文，跨窗口运行时同步需 storage 事件，超出本任务范围。
-  const { locale: i18nLocale } = useI18n()
+  const { t: i18nT, locale: i18nLocale } = useI18n()
 
   const hostRef = ref<HTMLElement | null>(null)
   const petApp = ref<PetApp | null>(null)
@@ -110,6 +123,10 @@ export function usePetView() {
   // --- 模拟 SSE 状态 ----------------------------------------------------
   let chatTimer: ReturnType<typeof setInterval> | null = null
   let chatLingerTimer: ReturnType<typeof setTimeout> | null = null
+  // 单击 token 气泡的停留计时器。
+  let tokenBubbleTimer: ReturnType<typeof setTimeout> | null = null
+  // 定时自动展示 token 用量的轮询计时器。
+  let tokenAutoTimer: ReturnType<typeof setInterval> | null = null
 
   /** 解析当前激活宠物的精灵图 URL。 */
   async function resolveActiveSrc(): Promise<{ id: string; src: string } | null> {
@@ -158,6 +175,8 @@ export function usePetView() {
 
       // 鼠标进入宠物 → 触发模拟对话；离开宠物 → 停止流式并淡出隐藏。
       petApp.value.onPetHoverChange = handleHoverChange
+      // 应用持久化的漫游模式（固定时不走步，只停在原地）。
+      petApp.value.setMovementMode(petSettings.movementMode)
       isLoading.value = false
     } catch (error) {
       console.error('[PetView] boot pet app failed:', error)
@@ -198,6 +217,8 @@ export function usePetView() {
         config: { scale: petSettings.scale / 100 }
       })
       app.onPetHoverChange = handleHoverChange
+      // 重建后重新应用漫游模式（与 bootPetApp 保持一致）。
+      app.setMovementMode(petSettings.movementMode)
       petApp.value = app
     } catch (error) {
       console.error('[PetView] rebuild pet app (scale) failed:', error)
@@ -234,6 +255,70 @@ export function usePetView() {
     }
   }
 
+  // --- 单击 token 用量气泡 ------------------------------------------------
+
+  /**
+   * 单击宠物时显示今日 token 用量气泡。
+   *
+   * 异步查询 ZCode SQLite 库，成功时在 ChatBubble 显示 "📊 今日 3200万 · 232次调用"；
+   * 查询失败或无数据时显示 i18n 提示文案。气泡停留 5s 后自动淡出。
+   *
+   * 与拖动不冲突：此函数仅在 handleWindowPointerUp 判定为「非拖动单击」后调用，
+   * 拖动（wasDragging=true）时不会到达此处。
+   *
+   * 与模拟 SSE 闲聊互斥：显示前先停止悬停闲聊定时器，避免争抢 ChatBubble。
+   */
+  async function showTokenUsage(): Promise<void> {
+    // 真实 ZCode 通知进行中时不抢占气泡。
+    if (zcodeEvents.isActive.value) return
+    const app = petApp.value
+    if (!app) return
+
+    // 停掉悬停闲聊，避免气泡争抢。
+    stopChatTimers()
+
+    let line: string
+    try {
+      const stats = await invoke<TokenStats | null>('get_zcode_token_stats')
+      if (stats && stats.todayTotalTokens > 0) {
+        // 统计行 + 按用量档位挑一句调皮调侃。
+        const comment = pickTokenCommentary(stats.todayTotalTokens, stats.todayCalls)
+        line = `📊 ${i18nT('ui.stats.today')}: ${formatTokens(stats.todayTotalTokens)} · ${stats.todayCalls}${i18nT('ui.stats.calls')}  ${comment}`
+      } else {
+        // 无数据（ZCode 今天还没用过），显示友好提示。
+        line = '📊 ' + i18nT('ui.stats.noData')
+      }
+    } catch {
+      // DB 未检测到或查询失败：静默，不弹气泡。
+      return
+    }
+
+    // 查询期间气泡可能被其他事件关闭，二次检查。
+    if (zcodeEvents.isActive.value) return
+
+    app.showChat()
+    // 逐字打字机效果，与整体风格一致。
+    const chars = [...line]
+    let i = 0
+    chatTimer = setInterval(() => {
+      if (i >= chars.length) {
+        finishStreaming()
+        return
+      }
+      app.appendChatToken(chars[i])
+      i += 1
+    }, SIM_TOKEN_INTERVAL_MS)
+
+    // 排定淡出。
+    if (tokenBubbleTimer) {
+      clearTimeout(tokenBubbleTimer)
+    }
+    tokenBubbleTimer = setTimeout(() => {
+      petApp.value?.hideChat()
+      tokenBubbleTimer = null
+    }, TOKEN_BUBBLE_LINGER_MS)
+  }
+
   // --- 菜单 --------------------------------------------------------------
 
   /**
@@ -265,6 +350,7 @@ export function usePetView() {
     return { x, y }
   }
 
+  /** 打开动作菜单（当前不再由左键单击触发，保留供右键菜单或扩展使用）。 */
   function openActionMenu(): void {
     const app = petApp.value
     if (!app) return
@@ -318,6 +404,26 @@ export function usePetView() {
     }
   }
 
+  /**
+   * 重置宠物到当前屏中心。
+   *
+   * 窗口恒为「单屏铺满当前显示器」，故画布中心即屏幕中心。dragTo → brain.setPosition
+   * 内部 clamp 进 PetBounds（不会出屏/进死区），并进入 idle，松开后从中心重新决策。
+   */
+  function handleResetToCenter(): void {
+    petApp.value?.dragTo(window.innerWidth / 2, window.innerHeight / 2)
+  }
+
+  /**
+   * 切换漫游模式：自由 / 固定。
+   *
+   * 写入 petSettings.movementMode（store 自动持久化），引擎由下面的 watch 同步应用，
+   * 故此处只改状态、不直接调引擎（避免重建竞态）。
+   */
+  function handleToggleMovementMode(): void {
+    petSettings.movementMode = petSettings.movementMode === 'fixed' ? 'free' : 'fixed'
+  }
+
   // --- 拖拽 / 单击 / 右键 ------------------------------------------------
 
   function handlePointerDown(event: PointerEvent): void {
@@ -347,7 +453,10 @@ export function usePetView() {
   }
 
   function handleWindowPointerMove(event: PointerEvent): void {
-    if (!pointerArmed.value || dragging.value) return
+    // 注意：此处只判 pointerArmed。不可再判 dragging.value ——
+    // dragging 一旦置 true 就会让本函数提前 return，导致 dragTo 仅在跨过 5px 阈值那一帧
+    // 调用一次、之后整段手势冻结（表现为「拖不动 / 卡住」）。dragging 仅用于区分单击与拖拽。
+    if (!pointerArmed.value) return
     if (event.buttons !== 1) return
     const dx = event.clientX - downX
     const dy = event.clientY - downY
@@ -371,7 +480,9 @@ export function usePetView() {
     if (!app) return
     const hit = app.hitTest(event.clientX, event.clientY)
     if (hit) {
-      openActionMenu()
+      // 左键单击命中宠物：仅显示今日 token 用量气泡（不再弹动画菜单）。
+      // 动画菜单改为仅右键菜单可访问。
+      void showTokenUsage()
     } else {
       closeAllMenus()
     }
@@ -380,6 +491,26 @@ export function usePetView() {
   function handleContextMenu(event: MouseEvent): void {
     event.preventDefault()
     openContextMenu()
+  }
+
+  /**
+   * 全局 pointerdown：菜单可见时，点击落在菜单/宠物精灵外则关闭菜单。
+   *
+   * 菜单打开后窗口整屏可交互（setIgnoreCursorEvents=false），空白区域
+   * pointerdown 会到达 JS，借此实现「点击外部关闭」。
+   * 命中宠物精灵时不关（让 pointerdown→pointerup 的单击流程接管）。
+   */
+  function handleGlobalPointerDown(event: PointerEvent): void {
+    if (!actionMenuVisible.value && !contextMenuVisible.value) return
+    // 命中宠物精灵：不干预，交给单击/拖拽逻辑处理。
+    const app = petApp.value
+    if (app && app.hitTest(event.clientX, event.clientY)) return
+    // 检查是否点在菜单 DOM 内（菜单有 @pointerdown.stop，但保险起见再判断一次）。
+    const target = event.target as HTMLElement | null
+    if (target?.closest('.pet-menu')) return
+    // 点在空白区域：关闭菜单 + 立即恢复穿透态（不等 60ms 轮询）。
+    closeAllMenus()
+    void pollClickThrough()
   }
 
   // --- 透明窗口穿透控制 --------------------------------------------------
@@ -497,6 +628,32 @@ export function usePetView() {
     }
   }
 
+  // --- 定时 token 用量气泡 -----------------------------------------------
+
+  /**
+   * 每 {@link TOKEN_AUTO_INTERVAL_MS} 自动展示一次今日 token 用量。
+   *
+   * 与手动单击调用同一个 {@link showTokenUsage}，但跳过条件更严格：
+   * 真实 ZCode 通知进行中 / 用户正在拖拽 / 正在开菜单 / 悬停闲聊进行中时不打扰。
+   */
+  function startTokenAutoTimer(): void {
+    if (tokenAutoTimer) return
+    tokenAutoTimer = setInterval(() => {
+      // 真实通知进行中：不打断。
+      if (zcodeEvents.isActive.value) return
+      // 用户正在交互（拖拽 / 开菜单 / 武装点击）：不打扰。
+      if (pointerArmed.value || dragging.value || actionMenuVisible.value || contextMenuVisible.value) return
+      void showTokenUsage()
+    }, TOKEN_AUTO_INTERVAL_MS)
+  }
+
+  function stopTokenAutoTimer(): void {
+    if (tokenAutoTimer) {
+      clearInterval(tokenAutoTimer)
+      tokenAutoTimer = null
+    }
+  }
+
   /**
    * 悬停统一处理：先唤醒（悬停即交互），再分派模拟对话。
    * bootPetApp / rebuildPetAppForScale 都把 onPetHoverChange 指向此函数。
@@ -567,6 +724,10 @@ export function usePetView() {
       clearTimeout(chatLingerTimer)
       chatLingerTimer = null
     }
+    if (tokenBubbleTimer) {
+      clearTimeout(tokenBubbleTimer)
+      tokenBubbleTimer = null
+    }
   }
 
   // --- 生命周期 ----------------------------------------------------------
@@ -589,11 +750,13 @@ export function usePetView() {
 
     window.addEventListener('pointermove', handleWindowPointerMove, true)
     window.addEventListener('pointerup', handleWindowPointerUp, true)
+    window.addEventListener('pointerdown', handleGlobalPointerDown, true)
 
     await bootPetApp()
 
     startClickThroughLoop()
     startIdleChecker()
+    startTokenAutoTimer()
     lastInteractionAt = Date.now()
   })
 
@@ -614,12 +777,23 @@ export function usePetView() {
     }
   )
 
+  // 漫游模式变化（自由 / 固定）：实时应用到引擎，无需重建。
+  // 跨窗口经 localStorage 同步（管理窗口设置页改动也会触发），保持两端一致。
+  watch(
+    () => petSettings.movementMode,
+    (mode) => {
+      petApp.value?.setMovementMode(mode)
+    }
+  )
+
   onUnmounted(() => {
     document.body.classList.remove('pet-window-transparent')
     window.removeEventListener('pointermove', handleWindowPointerMove, true)
     window.removeEventListener('pointerup', handleWindowPointerUp, true)
+    window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
     stopClickThroughLoop()
     stopIdleChecker()
+    stopTokenAutoTimer()
     stopChatTimers()
     desktopPetStore.stopPetSwitchListener()
     void setIgnoreCursorEvents(false)
@@ -644,9 +818,12 @@ export function usePetView() {
     handlePointerDown,
     handleContextMenu,
     handleAction,
+    openActionMenu,
     switchToNextPet,
     handleHide,
     handleOpenSettings,
+    handleResetToCenter,
+    handleToggleMovementMode,
     closeAllMenus
   }
 }

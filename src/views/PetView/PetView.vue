@@ -19,8 +19,14 @@ const {
   switchToNextPet,
   handleHide,
   handleOpenSettings,
+  handleResetToCenter,
+  handleToggleMovementMode,
   closeAllMenus
 } = usePetView()
+
+import { usePetSettingsStore } from '@/stores/petSettings'
+const petSettings = usePetSettingsStore()
+
 </script>
 
 <template>
@@ -82,6 +88,20 @@ const {
         @click="switchToNextPet(); closeAllMenus()"
       >
         下一只宠物
+      </button>
+      <button
+        type="button"
+        class="pet-menu__item"
+        @click="handleResetToCenter(); closeAllMenus()"
+      >
+        重置到屏幕中间
+      </button>
+      <button
+        type="button"
+        class="pet-menu__item"
+        @click="handleToggleMovementMode(); closeAllMenus()"
+      >
+        {{ petSettings.movementMode === 'fixed' ? '恢复自由漫游' : '固定位置' }}
       </button>
       <button
         type="button"

@@ -25,13 +25,26 @@ export default {
 
   'notif.tool.start': '正在 {tool}…',
   'notif.tool.start.file': '正在 {tool}：{file}',
+  'notif.tool.read': '📖 读取 {file}',
+  'notif.tool.write': '✏️ 写入 {file}',
+  'notif.tool.edit': '✏️ 编辑 {file}',
+  'notif.tool.bash': '⚙️ 执行：{command}',
+  'notif.tool.search': '🔍 搜索：{pattern}',
+  'notif.tool.subagent': '🤖 子代理：{desc}',
+  'notif.tool.subagent.generic': '🤖 调用子代理…',
+  'notif.tool.webfetch': '🌐 抓取：{url}',
+  'notif.tool.webfetch.generic': '🌐 抓取网页…',
+  'notif.tool.websearch': '🌐 搜索：{query}',
+  'notif.tool.websearch.generic': '🌐 搜索网络…',
   'notif.tool.done': '✅ {tool} 完成',
+  'notif.tool.done.file': '✅ {tool} 完成：{file}',
   'notif.tool.failed': '❌ {tool} 失败：{error}',
 
   'notif.perm.need': '⚠️ 需要确认：{tool}',
 
   'notif.stop.done': '✅ 本轮完成',
   'notif.stop.done.line': '✅ 本轮完成：{line}',
+  'notif.stop.empty': '⚠️ 本轮结束（无输出）',
 
   // --- 管理窗口标题（ui.app.*）------------------------------------------
   'ui.app.title': 'ZCode 桌面宠物',
@@ -41,6 +54,9 @@ export default {
   'ui.pet.enable': '启用桌面宠物',
   'ui.pet.alwaysOnTop': '始终置顶',
   'ui.pet.scale': '宠物大小',
+  'ui.pet.movementMode': '漫游模式',
+  'ui.pet.movementFree': '自由漫游',
+  'ui.pet.movementFixed': '固定位置',
   'ui.pet.myPets': '我的宠物',
   'ui.pet.market': '宠物市场',
   'ui.pet.search': '搜索宠物…',
@@ -107,6 +123,19 @@ export default {
   'ui.zcode.relinkHint': '已更新配置，请新建 ZCode 会话生效',
   'ui.zcode.nodeMissing': '未检测到 Node.js，联动功能需要先安装 Node.js（https://nodejs.org）',
   'ui.zcode.nodeOk': '检测到 Node.js {version}，可以开启联动',
+
+  // --- Token 使用量统计（ui.stats.*）-------------------------------------
+  'ui.stats.dataDir': 'ZCode 数据目录',
+  'ui.stats.autoDetected': '已自动检测',
+  'ui.stats.notDetected': '未检测到',
+  'ui.stats.dataDirPlaceholder': '留空则自动检测，或填写 ~/.zcode 所在目录',
+  'ui.stats.dataDirApply': '应用',
+  'ui.stats.dataDirOk': '数据目录已生效',
+  'ui.stats.dataDirNotFound': '该目录下未找到 ZCode 数据库，请检查路径',
+  'ui.stats.dataDirError': '设置失败：{error}',
+  'ui.stats.today': '今日',
+  'ui.stats.calls': '次调用',
+  'ui.stats.noData': '今天还没有 AI 活动哦~',
 
   // --- 设置项（ui.settings.*）-------------------------------------------
   'ui.settings.title': '设置',

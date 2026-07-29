@@ -12,13 +12,26 @@ export default {
 
   'notif.tool.start': 'Running {tool}…',
   'notif.tool.start.file': 'Running {tool}: {file}',
+  'notif.tool.read': '📖 Reading {file}',
+  'notif.tool.write': '✏️ Writing {file}',
+  'notif.tool.edit': '✏️ Editing {file}',
+  'notif.tool.bash': '⚙️ Running: {command}',
+  'notif.tool.search': '🔍 Searching: {pattern}',
+  'notif.tool.subagent': '🤖 Subagent: {desc}',
+  'notif.tool.subagent.generic': '🤖 Calling subagent…',
+  'notif.tool.webfetch': '🌐 Fetching: {url}',
+  'notif.tool.webfetch.generic': '🌐 Fetching web…',
+  'notif.tool.websearch': '🌐 Searching: {query}',
+  'notif.tool.websearch.generic': '🌐 Searching web…',
   'notif.tool.done': '✅ {tool} done',
+  'notif.tool.done.file': '✅ {tool} done: {file}',
   'notif.tool.failed': '❌ {tool} failed: {error}',
 
   'notif.perm.need': '⚠️ Needs confirmation: {tool}',
 
   'notif.stop.done': '✅ Turn complete',
   'notif.stop.done.line': '✅ Turn complete: {line}',
+  'notif.stop.empty': '⚠️ Turn ended (no output)',
 
   // --- Manager window title (ui.app.*) ----------------------------------
   'ui.app.title': 'ZCode Desktop Pet',
@@ -28,6 +41,9 @@ export default {
   'ui.pet.enable': 'Enable desktop pet',
   'ui.pet.alwaysOnTop': 'Always on top',
   'ui.pet.scale': 'Pet size',
+  'ui.pet.movementMode': 'Roam mode',
+  'ui.pet.movementFree': 'Free roam',
+  'ui.pet.movementFixed': 'Fixed in place',
   'ui.pet.myPets': 'My pets',
   'ui.pet.market': 'Pet market',
   'ui.pet.search': 'Search pets…',
@@ -94,6 +110,19 @@ export default {
   'ui.zcode.relinkHint': 'Config updated — start a new ZCode session to apply.',
   'ui.zcode.nodeMissing': 'Node.js not found. The link feature requires Node.js installed first (https://nodejs.org).',
   'ui.zcode.nodeOk': 'Found Node.js {version}, ready to link.',
+
+  // --- Token usage stats (ui.stats.*) -----------------------------------
+  'ui.stats.dataDir': 'ZCode data directory',
+  'ui.stats.autoDetected': 'Auto-detected',
+  'ui.stats.notDetected': 'Not detected',
+  'ui.stats.dataDirPlaceholder': 'Leave empty for auto-detect, or enter the dir containing ~/.zcode',
+  'ui.stats.dataDirApply': 'Apply',
+  'ui.stats.dataDirOk': 'Data directory applied',
+  'ui.stats.dataDirNotFound': 'ZCode database not found in that directory, please check the path',
+  'ui.stats.dataDirError': 'Failed: {error}',
+  'ui.stats.today': 'Today',
+  'ui.stats.calls': ' calls',
+  'ui.stats.noData': 'No AI activity today yet~',
 
   // --- Settings (ui.settings.*) -----------------------------------------
   'ui.settings.title': 'Settings',

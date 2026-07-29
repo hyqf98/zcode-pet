@@ -27,7 +27,7 @@ describe('mapEvent', () => {
     expect(spec!.params).toBeUndefined()
   })
 
-  it('maps PreToolUse with filePath to basename in params.file', () => {
+  it('maps PreToolUse Write with filePath to verb-specific write key + basename', () => {
     const spec = mapEvent({
       event: 'PreToolUse',
       toolName: 'Write',
@@ -36,30 +36,83 @@ describe('mapEvent', () => {
 
     expect(spec).not.toBeNull()
     expect(spec!.action).toBe('running')
-    expect(spec!.messageKey).toBe('notif.tool.start')
+    expect(spec!.messageKey).toBe('notif.tool.write')
     expect(spec!.severity).toBe('info')
-    expect(spec!.params).toEqual({ tool: 'Write', file: 'b.ts' })
+    expect(spec!.params).toEqual({ file: 'b.ts' })
   })
 
-  it('maps PreToolUse without filePath to params without file', () => {
-    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Bash' })
-
-    expect(spec!.params).toEqual({ tool: 'Bash' })
+  it('maps PreToolUse Read to notif.tool.read key', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Read', filePath: 'src/x.ts' })
+    expect(spec!.messageKey).toBe('notif.tool.read')
+    expect(spec!.params).toEqual({ file: 'x.ts' })
   })
 
-  it('maps PreToolUse without toolName to default tool name and handles Windows paths', () => {
+  it('maps PreToolUse Edit to notif.tool.edit key', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Edit', filePath: 'src/y.ts' })
+    expect(spec!.messageKey).toBe('notif.tool.edit')
+    expect(spec!.params).toEqual({ file: 'y.ts' })
+  })
+
+  it('maps PreToolUse Bash to notif.tool.bash with command', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Bash', command: 'cargo build --release' })
+    expect(spec!.messageKey).toBe('notif.tool.bash')
+    expect(spec!.params).toEqual({ command: 'cargo build --release' })
+  })
+
+  it('maps PreToolUse Bash with very long command truncated to 40 chars + ellipsis', () => {
+    const long = 'x'.repeat(120)
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Bash', command: long })
+    expect(spec!.params!.command.length).toBe(40)
+    expect(spec!.params!.command.endsWith('…')).toBe(true)
+  })
+
+  it('maps PreToolUse Grep to notif.tool.search with pattern', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Grep', pattern: 'handleClick' })
+    expect(spec!.messageKey).toBe('notif.tool.search')
+    expect(spec!.params).toEqual({ pattern: 'handleClick' })
+  })
+
+  it('maps PreToolUse Task (subagent) to notif.tool.subagent with description', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Task', description: 'explore codebase' })
+    expect(spec!.messageKey).toBe('notif.tool.subagent')
+    expect(spec!.params).toEqual({ desc: 'explore codebase' })
+  })
+
+  it('maps PreToolUse Task without description to generic subagent key', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'Task' })
+    expect(spec!.messageKey).toBe('notif.tool.subagent.generic')
+    expect(spec!.params).toBeUndefined()
+  })
+
+  it('maps PreToolUse WebFetch with url', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'WebFetch', url: 'https://example.com/api' })
+    expect(spec!.messageKey).toBe('notif.tool.webfetch')
+    expect(spec!.params).toEqual({ url: 'https://example.com/api' })
+  })
+
+  it('maps PreToolUse without known tool/file to generic start key', () => {
+    const spec = mapEvent({ event: 'PreToolUse', toolName: 'SomeUnknownTool' })
+    expect(spec!.messageKey).toBe('notif.tool.start')
+    expect(spec!.params).toEqual({ tool: 'SomeUnknownTool' })
+  })
+
+  it('maps PreToolUse without toolName but with filePath to generic start.file fallback', () => {
     const spec = mapEvent({ event: 'PreToolUse', filePath: 'src\\a\\b.ts' })
-
     expect(spec!.params).toEqual({ tool: '工具', file: 'b.ts' })
   })
 
-  it('maps PostToolUse to review done (success)', () => {
-    const spec = mapEvent({ event: 'PostToolUse', toolName: 'Edit' })
-
+  it('maps PostToolUse for file tool (Edit) to done.file with basename', () => {
+    const spec = mapEvent({ event: 'PostToolUse', toolName: 'Edit', filePath: 'src/a/b.ts' })
     expect(spec!.action).toBe('review')
-    expect(spec!.messageKey).toBe('notif.tool.done')
+    expect(spec!.messageKey).toBe('notif.tool.done.file')
     expect(spec!.severity).toBe('success')
-    expect(spec!.params).toEqual({ tool: 'Edit' })
+    expect(spec!.params).toEqual({ tool: 'Edit', file: 'b.ts' })
+  })
+
+  it('maps PostToolUse for non-file tool to generic done key', () => {
+    const spec = mapEvent({ event: 'PostToolUse', toolName: 'Bash' })
+    expect(spec!.messageKey).toBe('notif.tool.done')
+    expect(spec!.params).toEqual({ tool: 'Bash' })
   })
 
   it('maps PostToolUseFailure to failed (error, instant)', () => {
@@ -102,12 +155,12 @@ describe('mapEvent', () => {
     expect(spec!.params).toEqual({ tool: 'Bash' })
   })
 
-  it('maps Stop without lastAssistantMessage to fixed message (no fullText)', () => {
+  it('maps Stop without lastAssistantMessage to failed action (abnormal end)', () => {
     const spec = mapEvent({ event: 'Stop' })
 
-    expect(spec!.action).toBe('waving')
-    expect(spec!.messageKey).toBe('notif.stop.done')
-    expect(spec!.severity).toBe('info')
+    expect(spec!.action).toBe('failed')
+    expect(spec!.messageKey).toBe('notif.stop.empty')
+    expect(spec!.severity).toBe('warn')
     expect(spec!.fullText).toBeUndefined()
   })
 

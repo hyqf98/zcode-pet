@@ -561,7 +561,15 @@ pub fn ensure_pet_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String
         .visible(false)
         .focused(false)
         .build()
-        .map_err(|e| format!("创建宠物窗口失败: {}", e))
+        .map_err(|e| format!("创建宠物窗口失败: {}", e))?;
+
+    // 默认设为鼠标穿透（click-through）。前端轮询会在精灵上方切回可交互；
+    // 即便前端启动失败/抛错，窗口也始终透明 + 穿透，绝不变成不透明遮挡层挡住整屏。
+    if let Some(w) = app.get_webview_window(PET_WINDOW_LABEL) {
+        let _ = w.set_ignore_cursor_events(true);
+        return Ok(w);
+    }
+    Err("宠物窗口创建后无法获取".to_string())
 }
 
 /// 把宠物窗口定位到当前显示器右下角（考虑 Dock/任务栏预留边距）。
@@ -646,86 +654,22 @@ fn position_fullscreen(window: &tauri::WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
-/// 多显示器包围盒并集（物理像素）。`Some((min_x, min_y, max_x, max_y))` 为并集矩形的
-/// 左上角与右下角（物理像素，虚拟桌面坐标系）。所有显示器的物理矩形取最小/最大边界。
-///
-/// 抽出为纯函数（输入物理矩形元组列表）以便单测，不依赖 Tauri Monitor 类型。
-fn monitors_union_physical(
-    monitors: &[(f64, f64, f64, f64)], // (origin_x, origin_y, width, height) 物理像素
-) -> Option<(f64, f64, f64, f64)> {
-    if monitors.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for &(ox, oy, w, h) in monitors {
-        if ox < min_x {
-            min_x = ox;
-        }
-        if oy < min_y {
-            min_y = oy;
-        }
-        let right = ox + w;
-        let bottom = oy + h;
-        if right > max_x {
-            max_x = right;
-        }
-        if bottom > max_y {
-            max_y = bottom;
-        }
-    }
-    Some((min_x, min_y, max_x, max_y))
-}
-
-/// 把宠物窗口铺满所有显示器的并集（全屏透明覆盖层，跨屏漫游模式）。
-///
-/// 多屏时窗口覆盖整个虚拟桌面并集，前端 PixiJS 画布相应放大，宠物可跨屏穿行；
-/// 前端按每块显示器的真实矩形做死区吸附，不规则布局下也不会让宠物消失。
-/// 单屏 / 取不到显示器时委派 `position_fullscreen`（保持原有单屏行为）。
-///
-/// 用 Physical 坐标定位 + 设尺寸，避免跨屏不同 DPI 时的 scale 换算歧义
-/// （窗口在 macOS 上为单一 scaleFactor；Windows 上跨不同 DPI 屏是已知 OS 限制）。
-fn position_span_all_monitors(window: &tauri::WebviewWindow) -> Result<(), String> {
-    let monitors = window
-        .available_monitors()
-        .map_err(|e| format!("获取显示器列表失败: {}", e))?;
-
-    // 单屏或无显示器 → 回退单屏铺满（与旧行为一致）。
-    if monitors.len() <= 1 {
-        return position_fullscreen(window);
-    }
-
-    // 收集所有显示器的物理矩形 (origin_x, origin_y, width, height)。
-    let rects: Vec<(f64, f64, f64, f64)> = monitors
-        .iter()
-        .map(|m| {
-            let pos = m.position();
-            let size = m.size();
-            (
-                pos.x as f64,
-                pos.y as f64,
-                size.width as f64,
-                size.height as f64,
-            )
-        })
-        .collect();
-
-    let (min_x, min_y, max_x, max_y) = monitors_union_physical(&rects)
-        .ok_or_else(|| "无法计算显示器并集".to_string())?;
-
-    let width = (max_x - min_x).max(1.0);
-    let height = (max_y - min_y).max(1.0);
-
-    // 定位到并集左上角（物理坐标），尺寸设为并集全尺寸（物理像素）。
-    window
-        .set_position(PhysicalPosition::new(min_x, min_y))
-        .map_err(|e| format!("定位跨屏宠物窗口失败: {}", e))?;
-    window
-        .set_size(PhysicalSize::new(width, height))
-        .map_err(|e| format!("设置跨屏宠物窗口尺寸失败: {}", e))?;
-    Ok(())
+/// 窗口迁移后返回的新几何信息（物理像素），供前端做宠物坐标重映射。
+/// 前端在迁移前后用「虚拟桌面物理坐标」保持宠物位置连续，实现无缝跨屏。
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowGeometry {
+    /// 新窗口物理原点（虚拟桌面坐标系）。
+    origin_x: f64,
+    origin_y: f64,
+    /// 新窗口物理宽高。
+    width: f64,
+    height: f64,
+    /// 新窗口逻辑宽高（= 物理 / scaleFactor），与 PixiJS 画布逻辑坐标一致。
+    logical_width: f64,
+    logical_height: f64,
+    /// 新显示器的 scaleFactor。
+    scale_factor: f64,
 }
 
 // --- 位置记忆 ------------------------------------------------------------
@@ -785,12 +729,13 @@ fn rect_inside_any_monitor(
 
 // --- 命令：宠物悬浮窗口 --------------------------------------------------
 
-/// 显示宠物窗口。全屏透明窗口恒铺满当前显示器，宠物在内部自由漫游，无需位置记忆。
+/// 显示宠物窗口。全屏透明窗口铺满当前显示器（单屏），宠物在内部自由漫游。
+/// 多屏漫游由前端在检测到宠物跨屏时调用 `move_pet_window_to_monitor` 迁移窗口实现。
 #[tauri::command]
 pub fn show_pet_window(app: AppHandle) -> Result<(), String> {
     let window = ensure_pet_window(&app)?;
-    // 跨屏漫游：窗口铺满所有显示器并集（单屏时自动回退单屏铺满）。
-    position_span_all_monitors(&window)?;
+    // 单屏铺满当前显示器（macOS 下跨屏超大窗口在副屏不可见，故采用单屏 + 迁移）。
+    position_fullscreen(&window)?;
     window.show().map_err(|e| format!("显示宠物窗口失败: {}", e))?;
     Ok(())
 }
@@ -817,8 +762,8 @@ pub fn toggle_pet_window(app: AppHandle) -> Result<bool, String> {
         window.hide().map_err(|e| format!("隐藏宠物窗口失败: {}", e))?;
         Ok(false)
     } else {
-        // 跨屏漫游：窗口铺满所有显示器并集（单屏时自动回退单屏铺满）。
-        position_span_all_monitors(&window)?;
+        // 单屏铺满当前显示器。
+        position_fullscreen(&window)?;
         window.show().map_err(|e| format!("显示宠物窗口失败: {}", e))?;
         Ok(true)
     }
@@ -833,6 +778,113 @@ pub fn set_pet_always_on_top(app: AppHandle, always_on_top: bool) -> Result<(), 
             .map_err(|e| format!("切换置顶失败: {}", e))?;
     }
     Ok(())
+}
+
+/// 把宠物窗口迁移到指定显示器并铺满该屏（单屏铺满，跨屏漫游的迁移原语）。
+///
+/// macOS 下单个透明窗口无法跨屏渲染（副屏不可见），故采用「单屏铺满 + 跨屏迁移」：
+/// 窗口始终铺满宠物当前所在屏；当宠物走到屏边要进入相邻屏时，前端调用此命令把窗口
+/// 迁移到目标屏。返回新窗口几何（物理 + 逻辑），前端据此重映射宠物坐标，保持视觉连续。
+///
+/// `target_monitor_name` 为目标显示器名（来自 Tauri availableMonitors 的 Monitor.name）。
+/// 找不到该显示器时回退 `position_fullscreen`（铺满当前屏）。
+#[tauri::command]
+pub fn move_pet_window_to_monitor(
+    app: AppHandle,
+    target_monitor_name: String,
+) -> Result<WindowGeometry, String> {
+    let window = app
+        .get_webview_window(PET_WINDOW_LABEL)
+        .ok_or_else(|| "宠物窗口不存在".to_string())?;
+
+    let monitors = window
+        .available_monitors()
+        .map_err(|e| format!("获取显示器列表失败: {}", e))?;
+
+    // 按名匹配目标显示器。
+    let target = monitors
+        .into_iter()
+        .find(|m| m.name().map(|n| *n == target_monitor_name).unwrap_or(false));
+    // 找不到 → 回退当前屏铺满。
+    let monitor = match target {
+        Some(m) => m,
+        None => {
+            let (origin_x, origin_y, logical_w, logical_h, scale) =
+                position_fullscreen_and_report(&window)?;
+            return Ok(WindowGeometry {
+                origin_x,
+                origin_y,
+                width: logical_w * scale,
+                height: logical_h * scale,
+                logical_width: logical_w,
+                logical_height: logical_h,
+                scale_factor: scale,
+            });
+        }
+    };
+
+    let scale = monitor.scale_factor();
+    let pos = monitor.position();
+    let size = monitor.size();
+    let origin_x = pos.x as f64;
+    let origin_y = pos.y as f64;
+    let width = size.width as f64;
+    let height = size.height as f64;
+    let logical_width = width / scale;
+    let logical_height = height / scale;
+
+    // 迁移：定位到目标屏物理原点，尺寸设为目标屏物理全尺寸。
+    window
+        .set_position(PhysicalPosition::new(origin_x, origin_y))
+        .map_err(|e| format!("迁移宠物窗口定位失败: {}", e))?;
+    window
+        .set_size(PhysicalSize::new(width, height))
+        .map_err(|e| format!("迁移宠物窗口尺寸失败: {}", e))?;
+
+    Ok(WindowGeometry {
+        origin_x,
+        origin_y,
+        width,
+        height,
+        logical_width,
+        logical_height,
+        scale_factor: scale,
+    })
+}
+
+/// 铺满当前屏（position_fullscreen）并返回其几何信息（物理原点 + 逻辑尺寸 + scale）。
+/// 供 move_pet_window_to_monitor 的回退路径复用。
+fn position_fullscreen_and_report(
+    window: &tauri::WebviewWindow,
+) -> Result<(f64, f64, f64, f64, f64), String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|e| format!("获取当前显示器失败: {}", e))?
+        .or_else(|| {
+            window
+                .primary_monitor()
+                .map_err(|e| format!("获取主显示器失败: {}", e))
+                .ok()
+                .flatten()
+        })
+        .ok_or_else(|| "未找到可用显示器".to_string())?;
+
+    let scale = monitor.scale_factor();
+    let pos = monitor.position();
+    let size = monitor.size();
+    let origin_x = pos.x as f64;
+    let origin_y = pos.y as f64;
+    let logical_w = size.width as f64 / scale;
+    let logical_h = size.height as f64 / scale;
+
+    window
+        .set_position(LogicalPosition::new(origin_x, origin_y))
+        .map_err(|e| format!("定位全屏宠物窗口失败: {}", e))?;
+    window
+        .set_size(LogicalSize::new(logical_w, logical_h))
+        .map_err(|e| format!("设置全屏宠物窗口尺寸失败: {}", e))?;
+
+    Ok((origin_x, origin_y, logical_w, logical_h, scale))
 }
 
 // --- 命令：ZCode hook 联动（转调 crate::zcode 模块） ---------------------
@@ -870,6 +922,41 @@ pub fn check_node_available() -> Result<String, String> {
         return Err("无法读取 Node.js 版本".to_string());
     }
     Ok(version)
+}
+
+// --- 命令：ZCode token 使用量统计 ----------------------------------------
+
+/// 获取 ZCode SQLite 数据库路径（自动检测 + 用户覆盖）。
+///
+/// 返回检测到的 db.sqlite 绝对路径字符串，供前端展示。
+/// 未检测到时返回 None（前端提示用户手动填写数据目录）。
+#[tauri::command]
+pub fn get_zcode_db_path(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(crate::zcode::stats::resolve_db_path(&app)
+        .map(|p| p.to_string_lossy().to_string()))
+}
+
+/// 设置/清除 ZCode 数据目录覆盖路径。
+///
+/// `dir` 为 None 或空串时清除覆盖（恢复自动检测）。
+/// 返回 true 表示覆盖后路径检测成功（DB 文件存在）。
+#[tauri::command]
+pub fn set_zcode_data_dir(app: AppHandle, dir: Option<String>) -> Result<bool, String> {
+    let trimmed = dir.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    crate::zcode::stats::write_override_dir(&app, trimmed)
+}
+
+/// 查询今日 ZCode token 使用量统计。
+///
+/// 从 ZCode SQLite 库只读查询 model_usage 表，返回今日各模型 token 消耗汇总。
+/// DB 路径未检测到时返回 Err（前端可静默忽略）。
+#[tauri::command]
+pub fn get_zcode_token_stats(
+    app: AppHandle,
+) -> Result<Option<crate::zcode::stats::TokenStats>, String> {
+    let db_path = crate::zcode::stats::resolve_db_path(&app)
+        .ok_or_else(|| "未检测到 ZCode 数据目录".to_string())?;
+    crate::zcode::stats::query_today_stats(&db_path).map(Some)
 }
 
 // --- 私有辅助 ------------------------------------------------------------
@@ -935,56 +1022,5 @@ mod tests {
     fn rect_empty_monitors_is_tolerant() {
         // 无法读取显示器时应宽容放行（不阻止恢复记忆位置）。
         assert!(rect_inside_any_monitor(100.0, 100.0, 300.0, 320.0, &[]));
-    }
-
-    #[test]
-    fn union_single_monitor() {
-        // 单屏 1920x1080 @ (0,0)。
-        let monitors = vec![(0.0, 0.0, 1920.0, 1080.0)];
-        let (min_x, min_y, max_x, max_y) = monitors_union_physical(&monitors).unwrap();
-        assert_eq!((min_x, min_y), (0.0, 0.0));
-        assert_eq!((max_x, max_y), (1920.0, 1080.0));
-    }
-
-    #[test]
-    fn union_two_monitors_side_by_side() {
-        // 双屏并排：主屏 (0,0) 1920x1080，副屏 (1920,0) 1920x1080。
-        let monitors = vec![
-            (0.0, 0.0, 1920.0, 1080.0),
-            (1920.0, 0.0, 1920.0, 1080.0),
-        ];
-        let (min_x, min_y, max_x, max_y) = monitors_union_physical(&monitors).unwrap();
-        assert_eq!((min_x, min_y), (0.0, 0.0));
-        assert_eq!((max_x, max_y), (3840.0, 1080.0));
-    }
-
-    #[test]
-    fn union_negative_origin_monitor() {
-        // 副屏在主屏左侧（负坐标原点）：主屏 (0,0)，副屏 (-1920,0) 1920x1080。
-        let monitors = vec![
-            (0.0, 0.0, 1920.0, 1080.0),
-            (-1920.0, 0.0, 1920.0, 1080.0),
-        ];
-        let (min_x, min_y, max_x, max_y) = monitors_union_physical(&monitors).unwrap();
-        assert_eq!((min_x, min_y), (-1920.0, 0.0));
-        assert_eq!((max_x, max_y), (1920.0, 1080.0));
-    }
-
-    #[test]
-    fn union_l_shaped_different_heights() {
-        // L 形布局：主屏 (0,0) 1920x1080，副屏 (1920, -360) 1920x1440（副屏更高且偏上）。
-        // 并集会有死区（主屏右侧 x∈(1920,3840) 且 y>720 区域无屏），但并集本身应覆盖全部范围。
-        let monitors = vec![
-            (0.0, 0.0, 1920.0, 1080.0),
-            (1920.0, -360.0, 1920.0, 1440.0),
-        ];
-        let (min_x, min_y, max_x, max_y) = monitors_union_physical(&monitors).unwrap();
-        assert_eq!((min_x, min_y), (0.0, -360.0));
-        assert_eq!((max_x, max_y), (3840.0, 1080.0));
-    }
-
-    #[test]
-    fn union_empty_returns_none() {
-        assert!(monitors_union_physical(&[]).is_none());
     }
 }

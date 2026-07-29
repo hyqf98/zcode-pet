@@ -50,6 +50,9 @@ anyhow = "1"
 axum = "0.7"
 # 定位 ~/.zcode 等用户目录
 dirs = "5"
+# 只读访问 ZCode SQLite 统计库（token 使用量查询）
+# bundled: 内嵌 SQLite 编译，保证跨平台一致性（无需系统安装 sqlite3）
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # MCP Bridge（仅 debug 构建启用，供 Tauri MCP 端到端测试）
 tauri-plugin-mcp-bridge = "0.12"

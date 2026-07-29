@@ -6,14 +6,15 @@
 //   - 画布点击宠物触发 triggerReaction（点击反馈），由视图决定是否还要开菜单。
 
 import { Application, Container, Rectangle } from 'pixi.js'
-import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { CODEX_CELL_HEIGHT, CODEX_CELL_WIDTH } from './codexAtlas'
+import { createCrossMonitorMigrator } from './PetCrossMonitorMigrator'
 import { defaultPetConfig } from './petConfig'
 import { PetController } from './PetController'
-import { createMultiMonitorBounds, createViewportBounds } from './viewport'
+import { createViewportBounds } from './viewport'
 
-import type { MonitorInput, PetBounds } from './viewport'
+import type { PetBounds } from './viewport'
 import type { PetConfig } from './types'
 
 export interface PetAppOptions {
@@ -41,13 +42,17 @@ export interface PetApp {
   hitTest: (x: number, y: number) => boolean
   /** 返回宠物精灵在窗口逻辑坐标中的包围盒（用于动态穿透点击检测）。 */
   getPetBounds: () => { minX: number; minY: number; maxX: number; maxY: number }
-  /** 强制重算视口（窗口/显示器尺寸或 DPI 变化时调用）。非 preview 模式下为异步（查显示器）。 */
-  resize: () => Promise<void>
+  /** 强制重算视口（窗口/显示器尺寸或 DPI 变化时调用）。 */
+  resize: () => void
   /**
    * 拖拽宠物到窗口内指定脚位（CSS px）。内部 clamp 进当前 PetBounds，
    * 拖不到屏外/死区。松手后从该位置继续漫游。
    */
   dragTo: (x: number, y: number) => void
+  /**
+   * 设置漫游模式：'free' 自由漫游（默认）/ 'fixed' 固定位置（不走步，可拖动）。
+   */
+  setMovementMode: (mode: 'free' | 'fixed') => void
   /** 销毁 Pixi 应用并释放纹理。 */
   destroy: () => Promise<void>
   /** 当前宠物 id。 */
@@ -106,41 +111,17 @@ export async function createPetApp(
   /**
    * 解析当前漫游 PetBounds。
    *
-   * - preview 模式（PetManager 预览容器）：用 PixiJS 画布尺寸，单矩形模式。
-   * - 悬浮窗模式：查 Tauri availableMonitors + 窗口 outerPosition/scaleFactor，
-   *   算多显示器并集（每块屏独立换算），触发死区吸附。取不到显示器时回退画布尺寸。
+   * 窗口恒为「单屏铺满当前显示器」（macOS 下跨屏超大窗口在副屏不可见，故采用单屏 + 迁移），
+   * 因此 PixiJS 画布尺寸 = 当前屏可视区，直接由画布尺寸推导单矩形 bounds。
+   * 多屏漫游由 PetCrossMonitorMigrator 独立处理（检测宠物跨屏 → 迁移窗口 → 重映射坐标）。
    */
-  async function resolvePetBounds(footprint: { halfWidth: number; height: number }): Promise<PetBounds> {
-    const canvasBounds = createViewportBounds(app.screen.width, app.screen.height, footprint)
-    if (preview) return canvasBounds
-
-    try {
-      const win = getCurrentWindow()
-      const [monitors, origin, windowScale] = await Promise.all([
-        availableMonitors(),
-        win.outerPosition(),
-        win.scaleFactor(),
-      ])
-      if (monitors.length === 0 || windowScale <= 0) return canvasBounds
-
-      const inputs: MonitorInput[] = monitors.map((m) => ({
-        position: { x: m.position.x, y: m.position.y },
-        size: { width: m.size.width, height: m.size.height },
-        scaleFactor: m.scaleFactor,
-      }))
-      const multi = createMultiMonitorBounds(inputs, { x: origin.x, y: origin.y }, windowScale, footprint)
-      // monitors 为空（计算退化）时回退画布尺寸。
-      return multi.monitors.length > 0 ? multi : canvasBounds
-    } catch (error) {
-      console.warn('[createPetApp] resolve multi-monitor bounds failed, fallback to canvas:', error)
-      return canvasBounds
-    }
+  function resolvePetBounds(footprint: { halfWidth: number; height: number }): PetBounds {
+    return createViewportBounds(app.screen.width, app.screen.height, footprint)
   }
 
   const initialBounds = createViewportBounds(app.screen.width, app.screen.height, footprintEstimate(config))
 
   // 加载初始宠物。失败时在控制台报错并向上抛，调用方负责显示降级 UI。
-  // 先用画布估算 bounds 让 PetBrain 能初始化，下方 resolvePetBounds 会立刻重算真实多屏边界。
   const pet = await PetController.create(
     app.renderer,
     options.initialPetId,
@@ -150,9 +131,9 @@ export async function createPetApp(
   )
   scene.addChild(pet.view)
 
-  // 立即按真实显示器数据重算 bounds（悬浮窗模式；preview 为画布尺寸，等价重算）。
+  // 按画布尺寸重算 bounds（窗口已铺满当前屏）。
   pet.resize(
-    await resolvePetBounds(pet.footprint),
+    resolvePetBounds(pet.footprint),
     app.screen.width,
     app.screen.height
   )
@@ -173,29 +154,17 @@ export async function createPetApp(
     }
   })
 
-  // syncViewport：重算 Pixi 画布尺寸 + hitArea，并按真实显示器重算 PetBounds。
-  // 设为异步并加防重入锁，避免连续 resize 事件并发触发多次 availableMonitors 查询。
-  let syncing = false
-  let pending = false
-  const syncViewport = async (): Promise<void> => {
-    if (syncing) {
-      pending = true
-      return
-    }
-    syncing = true
-    try {
-      app.resize()
-      app.stage.hitArea = new Rectangle(0, 0, app.screen.width, app.screen.height)
-      const bounds = await resolvePetBounds(pet.footprint)
-      pet.resize(bounds, app.screen.width, app.screen.height)
-    } finally {
-      syncing = false
-      if (pending) {
-        pending = false
-        void syncViewport()
-      }
-    }
+  // syncViewport：重算 Pixi 画布尺寸 + hitArea，并按画布尺寸重算 PetBounds（单屏）。
+  const syncViewport = (): void => {
+    app.resize()
+    app.stage.hitArea = new Rectangle(0, 0, app.screen.width, app.screen.height)
+    pet.resize(resolvePetBounds(pet.footprint), app.screen.width, app.screen.height)
   }
+
+  // 跨屏迁移器（仅悬浮窗模式）：检测宠物进入相邻屏 → 迁移窗口 + 重映射坐标。
+  const migrator = preview
+    ? null
+    : createCrossMonitorMigrator({ pet, onMigrated: syncViewport })
 
   // 悬浮窗模式：DOM resize + Tauri 窗口 onResized/onScaleChanged 三路保险。
   // 后两者覆盖「拔插显示器 / 改分辨率 / 跨屏拖动导致窗口尺寸变化」等 Pixi 自动 resize 未捕获的场景。
@@ -217,6 +186,7 @@ export async function createPetApp(
 
   app.ticker.add(() => {
     pet.update(app.ticker.deltaMS)
+    if (migrator) void migrator.tick()
   })
 
   const petApp: PetApp = {
@@ -227,6 +197,7 @@ export async function createPetApp(
     getPetBounds: () => pet.getPetBounds(),
     resize: syncViewport,
     dragTo: (x, y) => pet.dragTo(x, y),
+    setMovementMode: (mode) => pet.setMovementMode(mode),
     showChat: () => pet.showChat(),
     appendChatToken: (token) => pet.appendChatToken(token),
     endChat: () => pet.endChat(),
@@ -254,4 +225,4 @@ export async function createPetApp(
 }
 
 export { createViewportBounds }
-export type { PetBounds, MonitorRect, MonitorInput } from './viewport'
+export type { PetBounds, MonitorRect } from './viewport'

@@ -5,6 +5,35 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tauri + Vue + Typescript App</title>
+    <!--
+      桌面宠物透明窗口（路由 /pet）：必须在 main.css / Vue 之前就透明，否则首帧会显示
+      body 的不透明白底（main.css body 背景为 #f4f4f5），造成「启动一瞬白屏」。
+      这里用内联脚本按 URL 判定 pet 窗口，同步给 <html> 打标记，配合内联样式让第一帧即透明。
+      即使后续前端加载失败/抛错，窗口也不会变成不透明遮挡屏（叠加 ensure_pet_window 默认穿透）。
+    -->
+    <script>
+      (function () {
+        try {
+          if (/^\/pet(?:\/|$|\?)/.test(location.pathname)) {
+            document.documentElement.classList.add('pet-window');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* pet 窗口第一帧即透明，不等 main.css / PetView 加载。html 无背景，故只压 body/#app。 */
+      html.pet-window,
+      html.pet-window body,
+      html.pet-window #app {
+        background: transparent !important;
+        min-height: auto !important;
+      }
+      html.pet-window body {
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
   </head>
 
   <body>

@@ -52,7 +52,9 @@ pub struct ZCodeHookInput {
 
 /// 透传给前端 pet 窗口的事件载荷（camelCase，供 TS 消费）。
 ///
-/// 由 [`ZCodeHookInput::to_pet_event`] 构造，只保留前端动画关心的字段。
+/// 由 [`ZCodeHookInput::to_pet_event`] 构造，只保留前端动画/气泡关心的字段。
+/// 除 `file_path` 外，按工具类型从 `tool_input` 额外抽取描述字段（command/pattern/description/url/query），
+/// 供前端按工具渲染更具体的气泡文案（如 Bash 显示命令、Task 显示子代理描述）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZCodePetEvent {
@@ -61,9 +63,24 @@ pub struct ZCodePetEvent {
     /// 工具名（如 Write / Edit / Bash）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
-    /// 从 `tool_input.file_path` 抽出的文件名（如果有）。
+    /// 从 `tool_input.file_path` 抽出的文件名（Read/Write/Edit 等）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_path: Option<String>,
+    /// 从 `tool_input.command` 抽出的命令（Bash）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// 从 `tool_input.pattern` 抽出的搜索模式（Grep / Glob）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// 从 `tool_input.description` 抽出的描述（Task / Agent 子代理）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// 从 `tool_input.url` 抽出的网址（WebFetch）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// 从 `tool_input.query` 抽出的搜索词（WebSearch）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
     /// 失败原因（PostToolUseFailure）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -81,7 +98,9 @@ pub struct ZCodePetEvent {
 impl ZCodeHookInput {
     /// 将宽松的 hook 输入转换为精简的、供前端消费的事件载荷。
     ///
-    /// `file_path` 从 `tool_input.file_path` 抽取（若有），其余字段直接映射。
+    /// `file_path` 从 `tool_input.file_path` 抽取（若有）；
+    /// 另按工具常用字段抽取 `command`/`pattern`/`description`/`url`/`query`，
+    /// 供前端按工具渲染更具体的气泡文案。其余字段直接映射。
     pub fn to_pet_event(&self) -> ZCodePetEvent {
         let file_path = self
             .tool_input
@@ -89,11 +108,46 @@ impl ZCodeHookInput {
             .and_then(|v| v.get("file_path"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        let command = self
+            .tool_input
+            .as_ref()
+            .and_then(|v| v.get("command"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let pattern = self
+            .tool_input
+            .as_ref()
+            .and_then(|v| v.get("pattern"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = self
+            .tool_input
+            .as_ref()
+            .and_then(|v| v.get("description"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let url = self
+            .tool_input
+            .as_ref()
+            .and_then(|v| v.get("url"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let query = self
+            .tool_input
+            .as_ref()
+            .and_then(|v| v.get("query"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         ZCodePetEvent {
             event: self.hook_event_name.clone(),
             tool_name: self.tool_name.clone(),
             file_path,
+            command,
+            pattern,
+            description,
+            url,
+            query,
             error: self.error.clone(),
             last_assistant_message: self.last_assistant_message.clone(),
             prompt: self.prompt.clone(),
@@ -165,10 +219,15 @@ mod tests {
             event: "Stop".to_string(),
             tool_name: None,
             file_path: None,
-            error: None,
+            command: None,
+            pattern: None,
+            description: None,
+            url: None,
+            query: None,
             last_assistant_message: Some("done".to_string()),
             prompt: Some("hi".to_string()),
             source: None,
+            error: None,
         };
         let s = serde_json::to_string(&ev).unwrap();
         // camelCase 键：last_assistant_message → lastAssistantMessage。
@@ -176,9 +235,47 @@ mod tests {
         // None 字段被跳过。
         assert!(!s.contains("toolName"));
         assert!(!s.contains("filePath"));
+        assert!(!s.contains("command"));
+        assert!(!s.contains("pattern"));
+        assert!(!s.contains("description"));
         assert!(!s.contains("\"error\""));
         assert!(!s.contains("\"source\""));
         assert!(s.contains("\"prompt\":\"hi\""));
         assert!(s.contains("\"event\":\"Stop\""));
+    }
+
+    #[test]
+    fn test_to_pet_event_extracts_rich_tool_fields() {
+        // Bash：抽 command；Task：抽 description；其余工具缺省字段为 None。
+        let input = ZCodeHookInput {
+            hook_event_name: "PreToolUse".to_string(),
+            tool_name: Some("Bash".to_string()),
+            tool_input: Some(json!({ "command": "cargo build" })),
+            tool_response: None,
+            error: None,
+            last_assistant_message: None,
+            prompt: None,
+            source: None,
+            session_id: None,
+            cwd: None,
+        };
+        let ev = input.to_pet_event();
+        assert_eq!(ev.command.as_deref(), Some("cargo build"));
+        assert!(ev.file_path.is_none());
+
+        let input2 = ZCodeHookInput {
+            hook_event_name: "PreToolUse".to_string(),
+            tool_name: Some("Task".to_string()),
+            tool_input: Some(json!({ "description": "search codebase" })),
+            tool_response: None,
+            error: None,
+            last_assistant_message: None,
+            prompt: None,
+            source: None,
+            session_id: None,
+            cwd: None,
+        };
+        let ev2 = input2.to_pet_event();
+        assert_eq!(ev2.description.as_deref(), Some("search codebase"));
     }
 }

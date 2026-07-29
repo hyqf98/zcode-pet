@@ -113,6 +113,40 @@ describe('PetBrain', () => {
     expect(snapshot.target).toBeNull()
   })
 
+  it('setFixed(true) prevents idle→walk transition (stays idle, no walking)', () => {
+    // idleDurationRange=[100,100]，update(120) 在自由模式下必进入 walk。
+    const brain = new PetBrain(config, singleRectPetBounds(bounds), sequenceRng([0.95, 0.95, 0.95]))
+    brain.setFixed(true)
+
+    // 即便过了 idle 时长，固定模式下也不走步。
+    const snapshot = brain.update(120)
+
+    expect(snapshot.state).toBe('idle')
+    expect(snapshot.target).toBeNull()
+  })
+
+  it('setFixed(true) halts an in-progress walk immediately', () => {
+    const brain = new PetBrain(config, singleRectPetBounds(bounds), sequenceRng([0.5, 0.5, 0.5]))
+    brain.update(200) // 自由模式下进入 walk
+    expect(brain.getSnapshot().state).toBe('walk')
+
+    brain.setFixed(true)
+    expect(brain.getSnapshot().state).toBe('idle')
+    expect(brain.getSnapshot().target).toBeNull()
+  })
+
+  it('setFixed(false) resumes walking', () => {
+    const brain = new PetBrain(config, singleRectPetBounds(bounds), sequenceRng([0.95, 0.1, 0.2]))
+    brain.setFixed(true)
+    brain.update(120)
+    expect(brain.getSnapshot().state).toBe('idle')
+
+    brain.setFixed(false)
+    const snapshot = brain.update(120)
+    expect(snapshot.state).toBe('walk')
+    expect(snapshot.target).not.toBeNull()
+  })
+
   it('snaps a dead-zone point to the nearest real monitor', () => {
     const petBounds = deadZonePetBounds()
 

@@ -14,6 +14,11 @@
 - 📦 **跨平台** — 支持 macOS / Windows / Linux
 - 🔄 **自动更新检测** — 启动时检测 GitHub Release 新版本，有更新时顶部显示下载按钮
 
+
+![首页.png](images/%E9%A6%96%E9%A1%B5.png)
+![桌面市场.png](images/%E6%A1%8C%E9%9D%A2%E5%B8%82%E5%9C%BA.png)
+
+
 ## 📥 下载安装
 
 前往 [Releases](https://github.com/hyqf98/zcode-pet/releases/latest) 下载最新版本：
@@ -86,32 +91,6 @@ zcode_pet/
 │   └── tauri.conf.json       # Tauri 配置
 ├── .github/workflows/        # CI/CD（自动打包发布）
 └── package.json
-```
-
-## 🔄 自动更新
-
-应用集成了完整的 **应用内自动更新**（基于 Tauri 官方 updater 插件）：
-
-1. 应用启动时自动调用 `tauri-plugin-updater` 检查 GitHub Release 的 `latest.json`
-2. updater 插件用内置公钥校验签名，确认是官方发布
-3. 若存在新版本，管理窗口顶部出现带脉冲圆点的 **下载更新** 按钮
-4. 点击后下载 → 校验签名 → 安装，完成后自动重启应用
-
-这套机制无需用户手动下载安装包，全程在应用内完成。密钥对生成在本地，私钥通过 GitHub Actions Secret 安全注入 CI。
-
-## 📦 发布流程
-
-本项目通过 GitHub Actions 自动打包发布：
-
-1. 代码合并到 `main` 分支
-2. 推送形如 `v1.0.0` 的 tag（带 `v` 前缀）
-3. CI 自动在 macOS / Windows / Linux 三平台并行构建
-4. 构建产物自动上传到 GitHub Release
-
-```bash
-# 发布新版本
-git tag v1.1.0
-git push origin v1.1.0
 ```
 
 ## 📄 许可证

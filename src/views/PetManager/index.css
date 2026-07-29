@@ -570,6 +570,37 @@
   width: 100%;
 }
 
+/* 值状态色（数据目录检测成功/失败标识） */
+.pm-setting__value--ok {
+  color: var(--color-success, #18a058);
+  font-weight: 600;
+}
+.pm-setting__value--warn {
+  color: var(--color-warning, #f0a020);
+  font-weight: 600;
+}
+
+/* 等宽路径展示（截断省略，hover title 看全路径） */
+.pm-setting__hint--mono {
+  font-family: var(--font-mono, 'SF Mono', 'Menlo', monospace);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 数据目录输入框 + 应用按钮行 */
+.pm-datadir-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+.pm-datadir-input .n-input {
+  flex: 1;
+}
+
 /* --- 响应式 --- */
 @media (max-width: 640px) {
   .pet-manager {

@@ -39,8 +39,18 @@ export interface ZCodePetEventPayload {
   event: string
   /** 工具名（Write/Edit/Bash/...），工具类事件携带。 */
   toolName?: string
-  /** 从 `tool_input.file_path` 抽出的文件路径（PreToolUse/PostToolUse/Failure）。 */
+  /** 从 `tool_input.file_path` 抽出的文件路径（Read/Write/Edit/Failure）。 */
   filePath?: string
+  /** 从 `tool_input.command` 抽出的命令（Bash）。 */
+  command?: string
+  /** 从 `tool_input.pattern` 抽出的搜索模式（Grep/Glob）。 */
+  pattern?: string
+  /** 从 `tool_input.description` 抽出的描述（Task/Agent 子代理）。 */
+  description?: string
+  /** 从 `tool_input.url` 抽出的网址（WebFetch）。 */
+  url?: string
+  /** 从 `tool_input.query` 抽出的搜索词（WebSearch）。 */
+  query?: string
   /** 错误信息（PostToolUseFailure）。 */
   error?: string
   /** 本轮最后一条 assistant 消息（Stop）。 */

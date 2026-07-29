@@ -39,3 +39,31 @@ app.use(router)
 app.use(naive)
 app.use(i18n)
 app.mount('#app')
+
+// 防御兜底：pet 窗口若在渲染/运行期抛出未捕获错误（Pixi 初始化失败等），
+// 确保窗口保持「透明 + 鼠标穿透」状态，绝不退化为不透明遮挡层挡住整屏。
+// （index.html 内联样式已让首帧透明，ensure_pet_window 已默认穿透；此处仅加固运行期。）
+;(function ensurePetWindowSafeOnFatalError() {
+  const isPetWindow =
+    typeof location !== 'undefined' && /^\/pet(?:\/|$|\?)/.test(location.pathname)
+  if (!isPetWindow) return
+
+  const markTransparent = (): void => {
+    document.documentElement.classList.add('pet-window')
+    document.body?.classList.add('pet-window-transparent')
+  }
+  const forceClickThrough = (): void => {
+    import('@tauri-apps/api/window')
+      .then((m) => m.getCurrentWindow().setIgnoreCursorEvents(true))
+      .catch(() => {})
+  }
+
+  window.addEventListener('error', () => {
+    markTransparent()
+    forceClickThrough()
+  })
+  window.addEventListener('unhandledrejection', () => {
+    markTransparent()
+    forceClickThrough()
+  })
+})()
