@@ -26,7 +26,6 @@ const {
   detailVisible,
   detailPet,
   zcodeLinked,
-  zcodeToggling,
   zcodeDbPath,
   zcodeDataDirInput,
   zcodeDataDirSaving,
@@ -41,7 +40,6 @@ const {
   handleLanguageChange,
   handleScaleChange,
   handleMovementModeChange,
-  handleToggleZCodeLink,
   handleSetZCodeDataDir,
   toLocalAssetUrl
 } = usePetManager()
@@ -171,20 +169,6 @@ const {
             class="pm-setting__control pm-setting__control--scale"
             @update:value="handleScaleChange"
           />
-        </div>
-
-        <!-- ZCode 联动 -->
-        <div class="pm-setting pm-setting--wide">
-          <div class="pm-setting__head">
-            <span class="pm-setting__label">{{ t('ui.zcode.link') }}</span>
-            <n-switch
-              :value="zcodeLinked"
-              :loading="zcodeToggling"
-              :round="false"
-              @update:value="handleToggleZCodeLink"
-            />
-          </div>
-          <p class="pm-setting__hint">{{ t('ui.zcode.linkHint') }}</p>
         </div>
 
         <!-- ZCode 数据目录（token 统计用，自动检测，异常时可手动填） -->

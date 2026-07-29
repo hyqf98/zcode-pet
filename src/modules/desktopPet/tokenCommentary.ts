@@ -11,25 +11,22 @@ import type { RandomSource } from './engine/types'
 /**
  * Token 用量档位（判断规则范围，由 {@link resolveTier} 按阈值选取）。
  *
- * - `rookie`  萌新 / 摸鱼：token < 1 万
- * - `warming` 起步热身：1 万 ~ 5 万
- * - `steady`  稳定输出：5 万 ~ 20 万
- * - `pro`     高产劳模：20 万 ~ 100 万
- * - `titan`   肝帝大佬：token ≥ 100 万 或 调用 ≥ 100 次
+ * 阈值规则（用户指定）：
+ * - `rookie`  比较垃圾 / 摸鱼：token < 1000 万
+ * - `steady`  还算可以：1000 万 ~ 1 亿
+ * - `titan`   比较牛逼：token ≥ 1 亿 或 调用 ≥ 500 次
  */
-type TokenTier = 'rookie' | 'warming' | 'steady' | 'pro' | 'titan'
+type TokenTier = 'rookie' | 'steady' | 'titan'
 
-/** 各档阈值（逻辑像素无关，纯数值） */
+/** 各档阈值（token 数）。 */
 const TIER_THRESHOLDS = {
   rookie: 0,
-  warming: 10_000,
-  steady: 50_000,
-  pro: 200_000,
-  titan: 1_000_000,
+  steady: 10_000_000, // 1000 万
+  titan: 100_000_000, // 1 亿
 } as const
 
-/** 大佬档的调用次数直通线：调用 ≥ 100 次即便 token 不到 100 万也按大佬对待。 */
-const TITAN_CALLS_DIRECT = 100
+/** 大佬档的调用次数直通线：调用 ≥ 500 次即便 token 不到 1 亿也按大佬对待。 */
+const TITAN_CALLS_DIRECT = 500
 
 /** 各档调皮短句池（每档 ≥ 10 条，展示时随机挑一条）。 */
 const COMMENTARY: Record<TokenTier, readonly string[]> = {
@@ -47,47 +44,19 @@ const COMMENTARY: Record<TokenTier, readonly string[]> = {
     '连热身都算不上，醒醒 🐣',
     '老板看见这数据要扣鸡腿了 🍗',
   ],
-  warming: [
-    '起步阶段，继续保持 💪',
-    '有模有样了，再接再厉',
-    '慢慢来，我陪着你 🐢',
-    '稳住，你能行',
-    '这节奏不错，刚开个场',
-    '热身完毕，准备加速？🔥',
-    '有点东西，但还可以更多',
-    '磨刀不误砍柴工，加油',
-    '小试牛刀，继续输出',
-    '渐入佳境的感觉 🌱',
-    '这速度，像在品茶 🍵',
-    '不急不躁，挺好挺好',
-  ],
   steady: [
+    '还算可以，继续保持 💪',
+    '有模有样了，生产力在线',
     '稳定输出，靠谱 💯',
     '这产量，我看好你',
     '中规中矩，保持节奏',
     '老实人实锤了，稳 📊',
     '这个量，AI 都夸你勤快',
     '标准打工人配置，点赞',
-    '生产力在线，继续冲',
     '稳如老狗，我放心了 🐶',
     '这节奏，挺有规律',
-    '输出稳定，老板放心',
     '中流砥柱就是你了',
     '不温不火，恰到好处',
-  ],
-  pro: [
-    '哟，今天挺能写啊 👀',
-    '高产似母猪，佩服佩服',
-    '这产量，键盘冒烟了吧 🔥',
-    '牛啊，今天战斗力爆表',
-    '劳模本模，向你致敬 🫡',
-    '这数据，奖金稳了 💰',
-    '猛人本猛，Respect',
-    '这输出，AI 都想给你鼓掌 👏',
-    '今天是肝帝附体了吗',
-    '这效率，给跪了 🧎',
-    '战神模式已开启 ⚔️',
-    '这产量，怕不是开了外挂',
   ],
   titan: [
     '牛逼啊兄弟！今天调用这么多？🚀',
@@ -108,7 +77,7 @@ const COMMENTARY: Record<TokenTier, readonly string[]> = {
 /**
  * 把今日 token 用量 + 调用次数归入一档。
  *
- * 优先看 token 总量分档；调用次数 ≥ 100 时直通「大佬」档（呼应"调用这么多？"的观感）。
+ * 优先看 token 总量分档；调用次数 ≥ 500 时直通「大佬」档（呼应"调用这么多？"的观感）。
  * token 为 0 时归最低档（实际调用方在 token=0 时不展示文案，此处仅兜底）。
  */
 export function resolveTier(totalTokens: number, calls: number): TokenTier {
@@ -116,9 +85,7 @@ export function resolveTier(totalTokens: number, calls: number): TokenTier {
   if (calls >= TITAN_CALLS_DIRECT) return 'titan'
 
   if (totalTokens >= TIER_THRESHOLDS.titan) return 'titan'
-  if (totalTokens >= TIER_THRESHOLDS.pro) return 'pro'
   if (totalTokens >= TIER_THRESHOLDS.steady) return 'steady'
-  if (totalTokens >= TIER_THRESHOLDS.warming) return 'warming'
   return 'rookie'
 }
 

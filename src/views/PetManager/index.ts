@@ -112,12 +112,26 @@ export function usePetManager() {
 
   // --- handlers：开关 ----------------------------------------------------
 
-  /** 启用/禁用桌面宠物。开启时显示窗口；关闭时隐藏。 */
+  /** 启用/禁用桌面宠物。开启时显示窗口并自动联动 ZCode；关闭时隐藏并断开联动。 */
   async function handleToggleEnabled(enabled: boolean): Promise<void> {
     petSettings.enabled = enabled
     if (enabled) {
       await desktopPetStore.loadLocalPets()
       await desktopPetStore.showPet()
+      // 开启宠物时自动联动 ZCode（无需用户单独开开关）。
+      // Node.js 检测失败时静默跳过（不阻断宠物开启，仅 toast 提示）。
+      if (!zcodeLinked.value) {
+        try {
+          await invoke<string>('check_node_available')
+          const result = await invoke<ZCodeLinkResult>('link_zcode', { enabled: true })
+          if (result.ok) {
+            zcodeLinked.value = result.linked
+            message.info(t('ui.zcode.relinkHint'), { duration: 4000 })
+          }
+        } catch {
+          // Node.js 不可用或联动注入失败：静默，宠物仍可正常使用。
+        }
+      }
     } else {
       await desktopPetStore.hidePet()
     }

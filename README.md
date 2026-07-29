@@ -17,6 +17,8 @@
 
 ![首页.png](images/%E9%A6%96%E9%A1%B5.png)
 ![桌面市场.png](images/%E6%A1%8C%E9%9D%A2%E5%B8%82%E5%9C%BA.png)
+![工具适配.png](images/%E5%B7%A5%E5%85%B7%E9%80%82%E9%85%8D.png)
+![工具适配2.png](images/%E5%B7%A5%E5%85%B7%E9%80%82%E9%85%8D2.png)
 
 
 ## 📥 下载安装

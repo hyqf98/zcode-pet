@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + Vue + Typescript App</title>
+    <title>ZCode 桌面宠物</title>
     <!--
       桌面宠物透明窗口（路由 /pet）：必须在 main.css / Vue 之前就透明，否则首帧会显示
       body 的不透明白底（main.css body 背景为 #f4f4f5），造成「启动一瞬白屏」。
@@ -32,6 +32,40 @@
         overflow: hidden;
         margin: 0;
         padding: 0;
+      }
+
+      /*
+        主窗口（管理界面）启动加载动画：Vue bundle 加载前显示一个居中 spinner，
+        避免 Windows 上 JS 加载期间的空白。Vue 挂载后 #app 有内容，加载层被覆盖。
+        pet 窗口不显示（已 transparent）。
+      */
+      html:not(.pet-window) body {
+        margin: 0;
+      }
+      #app:empty::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f4f4f5;
+      }
+      #app:empty::after {
+        content: '';
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 40px;
+        height: 40px;
+        margin: -20px 0 0 -20px;
+        border: 3px solid #e0e0e0;
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: app-spin 0.7s linear infinite;
+      }
+      @keyframes app-spin {
+        to { transform: rotate(360deg); }
       }
     </style>
   </head>

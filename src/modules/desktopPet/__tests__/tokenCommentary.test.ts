@@ -11,39 +11,29 @@ function constRng(v: number): () => number {
 }
 
 describe('resolveTier', () => {
-  it('classifies sub-10k tokens as rookie', () => {
+  it('classifies sub-10m tokens as rookie', () => {
     expect(resolveTier(0, 0)).toBe('rookie')
-    expect(resolveTier(9_999, 5)).toBe('rookie')
+    expect(resolveTier(9_999_999, 5)).toBe('rookie')
   })
 
-  it('classifies 10k-50k as warming', () => {
-    expect(resolveTier(10_000, 10)).toBe('warming')
-    expect(resolveTier(49_999, 20)).toBe('warming')
+  it('classifies 10m-100m as steady', () => {
+    expect(resolveTier(10_000_000, 10)).toBe('steady')
+    expect(resolveTier(99_999_999, 20)).toBe('steady')
   })
 
-  it('classifies 50k-200k as steady', () => {
-    expect(resolveTier(50_000, 30)).toBe('steady')
-    expect(resolveTier(199_999, 40)).toBe('steady')
+  it('classifies >=100m tokens as titan', () => {
+    expect(resolveTier(100_000_000, 70)).toBe('titan')
+    expect(resolveTier(500_000_000, 80)).toBe('titan')
   })
 
-  it('classifies 200k-1m as pro', () => {
-    expect(resolveTier(200_000, 50)).toBe('pro')
-    expect(resolveTier(999_999, 60)).toBe('pro')
+  it('promotes to titan when calls >= 500 regardless of token count', () => {
+    expect(resolveTier(500, 500)).toBe('titan')
+    expect(resolveTier(0, 800)).toBe('titan')
   })
 
-  it('classifies >=1m tokens as titan', () => {
-    expect(resolveTier(1_000_000, 70)).toBe('titan')
-    expect(resolveTier(50_000_000, 80)).toBe('titan')
-  })
-
-  it('promotes to titan when calls >= 100 regardless of token count', () => {
-    expect(resolveTier(500, 100)).toBe('titan')
-    expect(resolveTier(0, 250)).toBe('titan')
-  })
-
-  it('keeps steady tier when calls < 100 and tokens in steady band', () => {
-    // 100k tokens 落在 steady 区间（5万-20万），调用 99 次未触发大佬直通。
-    expect(resolveTier(100_000, 99)).toBe('steady')
+  it('keeps steady tier when calls < 500 and tokens in steady band', () => {
+    // 5000 万 tokens 落在 steady 区间（1000万-1亿），调用 499 次未触发大佬直通。
+    expect(resolveTier(50_000_000, 499)).toBe('steady')
   })
 })
 
@@ -58,8 +48,15 @@ describe('pickTokenCommentary', () => {
 
   it('picks a titan phrase for massive usage', () => {
     const TITAN_KW = ['牛逼', '大佬', '地球', '肝帝', '服务器', '神', '键盘', '离谱', '敲穿', '罢工', '怪兽', '膝盖']
-    const phrase = pickTokenCommentary(5_000_000, 200, constRng(0))
+    const phrase = pickTokenCommentary(200_000_000, 600, constRng(0))
     const hit = TITAN_KW.some((kw) => phrase.includes(kw))
+    expect(hit).toBe(true)
+  })
+
+  it('picks a steady phrase for mid-range usage', () => {
+    const STEADY_KW = ['还算', '可以', '生产力', '稳定', '靠谱', '看好', '中规中矩', '老实人', '勤快', '打工人', '稳如', '中流砥柱']
+    const phrase = pickTokenCommentary(30_000_000, 100, constRng(0.5))
+    const hit = STEADY_KW.some((kw) => phrase.includes(kw))
     expect(hit).toBe(true)
   })
 
@@ -74,15 +71,15 @@ describe('pickTokenCommentary', () => {
 
   it('clamps index when rng returns ~1 to avoid out-of-bounds', () => {
     // rng 返回接近 1（理论上不该，但 Math.random 边界）不应抛错。
-    const phrase = pickTokenCommentary(1_500_000, 300, constRng(0.999999))
+    const phrase = pickTokenCommentary(150_000_000, 600, constRng(0.999999))
     expect(typeof phrase).toBe('string')
     expect(phrase.length).toBeGreaterThan(0)
   })
 
   it('promotes low-token-but-high-calls to titan commentary', () => {
-    // 调用次数 120 直通大佬档，即便 token 很少。
+    // 调用次数 600 直通大佬档，即便 token 很少。
     const TITAN_KW = ['牛逼', '大佬', '地球', '肝帝', '服务器', '神', '键盘', '离谱', '敲穿', '罢工', '怪兽', '膝盖']
-    const phrase = pickTokenCommentary(2_000, 120, constRng(0))
+    const phrase = pickTokenCommentary(2_000, 600, constRng(0))
     const hit = TITAN_KW.some((kw) => phrase.includes(kw))
     expect(hit).toBe(true)
   })
