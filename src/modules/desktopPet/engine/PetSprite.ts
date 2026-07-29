@@ -157,6 +157,18 @@ export class PetSprite {
     this.frozenPosition = { x: this.view.position.x, y: this.view.position.y }
   }
 
+  /**
+   * 取消手动动作覆盖（如有），让精灵重新跟随 snapshot.position 移动。
+   *
+   * 用于拖拽接管：playAction 会冻结精灵位置（frozenPosition），若拖拽时不取消覆盖，
+   * 精灵会钉在冻结点不动、只有气泡跟随，松手后才「跳」到新位置。
+   * 拖拽优先级高于手动动作 —— 用户抓住宠物的意图应即时生效。
+   */
+  cancelOverride(): void {
+    this.overrideRowId = null
+    this.frozenPosition = null
+  }
+
   containsGlobalPoint(x: number, y: number): boolean {
     const bounds = this.view.getBounds()
 

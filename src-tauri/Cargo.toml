@@ -1,6 +1,6 @@
 [package]
 name = "zcode_pet"
-version = "1.0.3"
+version = "1.0.4"
 description = "ZCode Pet - 桌面宠物应用（独立 Tauri 2 应用）"
 authors = ["hyqf"]
 edition = "2021"

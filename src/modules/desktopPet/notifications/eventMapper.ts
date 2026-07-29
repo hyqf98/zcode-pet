@@ -234,18 +234,13 @@ export function mapEvent(payload: ZCodePetEventPayload): NotificationSpec | null
 
     case 'Stop': {
       // 优先渲染 AI 最终响应的完整正文（按 SSE 打字机逐字输出）。
-      // 截断到合理长度（避免超长响应把气泡撑爆），保留首行 + 后续内容。
+      // 气泡高度跟随内容撑开，不做截断，有多少就显示多少。
       const fullResponse = payload.lastAssistantMessage?.trim()
       if (fullResponse && fullResponse.length > 0) {
-        // 截断：最多 120 字（约 2-3 行气泡内容），超长尾部加省略号。
-        const truncated =
-          fullResponse.length > 120
-            ? fullResponse.slice(0, 120) + '…'
-            : fullResponse
         return {
           action: 'waving',
           messageKey: 'notif.stop.done',
-          fullText: truncated,
+          fullText: fullResponse,
           severity: 'info',
           minDisplayMs: DEFAULT_MIN_DISPLAY_MS,
           appendTokenStats: true,

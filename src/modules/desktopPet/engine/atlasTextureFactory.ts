@@ -12,7 +12,6 @@ import type { Renderer } from 'pixi.js'
 import type { AtlasTextures } from './types'
 import {
   CODEX_ATLAS_COLS,
-  CODEX_ATLAS_ROWS,
   CODEX_CELL_HEIGHT,
   CODEX_CELL_WIDTH,
   looksLikeCodexAtlas,
@@ -93,10 +92,12 @@ function validateAtlasShape(atlas: Texture): void {
 
 // 把源切片成 cells[row][col]。每个单元在 GPU 上共享一个 TextureSource，仅 frame Rectangle 不同。
 // 这是 pixi v8 的惯用切片 —— `new Texture({ source, frame })`（v7 的位置式构造器已移除）。
+// 行数按图集实际高度动态推断（v1=9 行，v2=11 行），从而完整支持 codex v2 扩展图集。
 function sliceAtlasGrid(atlas: Texture): Texture[][] {
   const source = atlas.source
+  const rowCount = Math.floor(atlas.height / CODEX_CELL_HEIGHT)
   const cells: Texture[][] = []
-  for (let row = 0; row < CODEX_ATLAS_ROWS; row += 1) {
+  for (let row = 0; row < rowCount; row += 1) {
     const rowCells: Texture[] = []
     for (let col = 0; col < CODEX_ATLAS_COLS; col += 1) {
       rowCells.push(

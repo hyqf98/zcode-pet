@@ -7,6 +7,19 @@ import { router } from './router'
 import { messages, defaultLocale } from '@/locales'
 import './assets/main.css'
 
+// pet 窗口首帧就绪通知：module script 执行点 = DOMContentLoaded 后，此时 index.html 的
+// 内联透明样式（html.pet-window body { background:transparent }）已应用，webview 不再是白底。
+// 后端 show_pet_window/toggle_pet_window 等待本事件后才 show，消除白屏闪现。
+// 不用 requestAnimationFrame —— 隐藏窗口的 webview 会被节流，rAF 不触发导致后端永远等不到事件。
+// 非 pet 窗口无需 emit；emit 失败静默（后端有 800ms 超时兜底）。
+if (/^\/pet(?:\/|$|\?)/.test(location.pathname)) {
+  // 确保透明 class 就位（index.html 内联脚本已加 html.pet-window，这里补 body class）。
+  document.body?.classList.add('pet-window-transparent')
+  import('@tauri-apps/api/event')
+    .then(({ emit }) => emit('pet-window-ready'))
+    .catch(() => {})
+}
+
 // vue-i18n：消息采用扁平点号 key，故开启 flatJson 以正确解析
 // （如 notif.tool.start 与 notif.tool.start.file 这类同前缀叶节点）。
 // 运行时语言切换由集成代理在 PetManager 里 watch petSettings.locale 实现；

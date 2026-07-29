@@ -46,6 +46,13 @@ onMounted(async () => {
         console.error('[App] focus main window failed:', e)
       }
     })
+
+    // main 窗口以 visible:false 创建（tauri.conf.json），避免 webview 加载期间的原生白底闪烁。
+    // Vue 挂载完成（DOM 已有内容）后立即 show，用户看到的是完整 UI 而非白色空窗。
+    // 注意：不能用 requestAnimationFrame —— 隐藏窗口的 webview 会被浏览器节流，rAF 不触发，
+    // 导致 main 窗口永远不显示。setTimeout 也同理不可靠。此处 onMounted 时 DOM 已就绪，直接 show。
+    const win = getCurrentWindow()
+    win.show().catch((e) => console.error('[App] show main window failed:', e))
   }
 })
 

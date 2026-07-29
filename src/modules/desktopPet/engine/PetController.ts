@@ -85,7 +85,8 @@ export class PetController {
     rng: RandomSource = Math.random
   ): Promise<PetController> {
     const textures = await loadPetTextures(renderer, initialSpritesheetSrc)
-    const layout = buildCodexAtlasLayout()
+    // 按图集实际行数构造 layout：v1（9 行）→ 标准 9 状态，v2（11 行）→ 完整 11 状态含环顾。
+    const layout = buildCodexAtlasLayout(textures.cells.length)
     return new PetController({
       renderer,
       initialPet: { id: initialPetId, textures },
@@ -209,6 +210,9 @@ export class PetController {
    */
   dragTo(x: number, y: number): void {
     this.dragging = true
+    // 取消任何进行中的手动动作覆盖（playAction 会冻结精灵位置）。
+    // 否则拖拽时精灵钉在 frozenPosition 不动、只有气泡跟随，松手后才跳到新位置。
+    this.sprite.cancelOverride()
     this.snapshot = this.brain.setPosition({ x, y })
     this.sprite.update(this.snapshot, 0)
     // 拖拽时同步更新气泡位置（不等 ticker），使气泡与精灵严格同步。

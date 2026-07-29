@@ -2,8 +2,8 @@
 //
 // 与 EmoteBubble（一次性、漂移、不跟随）不同：本气泡用于模拟 SSE 流式输出，
 // 文字逐 token 追加、带闪烁光标；每帧由 PetController.update 调 follow() 重新锚定到
-// 宠物头顶（宠物走动时气泡跟着移动）。当头顶上方余量不足时自动翻转到宠物下方，
-// 避免 300×320 透明窗口边缘裁切。
+// 宠物头顶（宠物走动时气泡跟着移动）。气泡高度跟随文本实际高度撑开，不设上限；
+// 当头顶上方余量不足时自动翻转到宠物下方。
 //
 // 契约与 EmoteBubble/ParticleBurst 一致：view: Container + update(deltaMs) + destroy()。
 // 为后续接入 ACP 真实对话预留：showChat/appendChatToken/endStreaming/hideChat 即流式 API。
@@ -30,8 +30,6 @@ const FLIP_MARGIN = 6
 const CURSOR = '▋'
 const CURSOR_BLINK_MS = 480
 const FADE_OUT_MS = 260
-// 气泡文本区最大高度（超出时模拟滚动，始终显示最新内容）。
-const MAX_TEXT_HEIGHT = 96
 
 // 字体栈：覆盖中英文 + 跨平台回退。
 const FONT_FAMILY =
@@ -46,7 +44,6 @@ export class ChatBubble {
   readonly view = new Container()
 
   private readonly bg = new Graphics()
-  private readonly mask = new Graphics()
   private readonly text: Text
 
   private _visible = false
@@ -83,15 +80,11 @@ export class ChatBubble {
         lineHeight: 18,
       },
     })
-    // anchor (0.5, 1)：文本底部中心锚定到容器底部。
-    // 超高文本溢出到顶部（被 mask 裁切），保证最新行始终在可视区底部可见。
+    // 文本底部中心锚定到容器底部（anchor 0.5,1）。
     this.text.anchor.set(0.5, 1)
     this.text.resolution = window.devicePixelRatio || 1
 
-    // mask 用于裁切文本可视区（模拟滚动窗口，超高文本只显示底部）。
-    // 注意：mask 只作用于 text，不能作用于 view —— 否则圆角背景 bg 也会被矩形 mask 裁掉。
-    this.view.addChild(this.bg, this.text, this.mask)
-    this.text.mask = this.mask
+    this.view.addChild(this.bg, this.text)
   }
 
   /** 当前是否处于可见状态。 */
@@ -232,25 +225,20 @@ export class ChatBubble {
     return this.text.width + PADDING_X * 2
   }
 
-  /** 气泡内容区高度：文本高度限制在 MAX_TEXT_HEIGHT 内（超出靠 mask 滚动裁切）。 */
+  /** 气泡内容区高度：跟随文本实际高度撑开，不设上限。 */
   private bubbleHeight(): number {
-    return Math.min(this.text.height, MAX_TEXT_HEIGHT) + PADDING_Y * 2
+    return this.text.height + PADDING_Y * 2
   }
 
-  // 根据当前文字尺寸 + 放置模式重绘圆角背景、尾巴与文本 mask。
+  // 根据当前文字尺寸 + 放置模式重绘圆角背景与尾巴。
   // 局部原点 (0,0) = 尾巴尖（最贴近宠物的一侧）。
-  //
-  // 滚动机制：文本 anchor 为 (0.5,1)（底部中心）。当文本超高时：
-  //   - 气泡矩形高度 = MAX_TEXT_HEIGHT（固定可视窗口）。
-  //   - mask 裁切矩形区域 = 气泡内容区。
-  //   - 文本底部锚定在矩形底部内侧 → 最新行始终在可视区底部可见，旧行向上溢出被 mask 裁掉。
+  // 文本 anchor 为 (0.5,1)（底部中心），气泡高度跟随文本实际高度撑开，不做裁切。
   private redraw(): void {
     const w = this.bubbleWidth()
     const h = this.bubbleHeight()
     const halfW = w / 2
 
     this.bg.clear()
-    this.mask.clear()
 
     if (this.below) {
       // 气泡在宠物下方：矩形在原点下方，尾巴在矩形顶部、尖朝上指向宠物。
@@ -264,8 +252,6 @@ export class ChatBubble {
         .lineTo(0, 0)
         .closePath()
         .fill({ color: 0xfff8ec, alpha: 0.97 })
-      // mask：裁切矩形内容区（不含 padding，文本溢出部分不可见）。
-      this.mask.rect(-halfW + PADDING_X, TAIL_HEIGHT + PADDING_Y, w - PADDING_X * 2, h - PADDING_Y * 2).fill(0xffffff)
       // 文本底部锚定在矩形底部内侧（anchor 0.5,1 → 中心 x, 底部 y）。
       this.text.position.set(0, TAIL_HEIGHT + h - PADDING_Y)
     } else {
@@ -286,8 +272,6 @@ export class ChatBubble {
         .lineTo(0, 0)
         .lineTo(TAIL_HALF_WIDTH, -TAIL_HEIGHT)
         .stroke({ color: 0x312013, width: 2, alpha: 0.9 })
-      // mask：裁切矩形内容区。
-      this.mask.rect(-halfW + PADDING_X, -TAIL_HEIGHT - h + PADDING_Y, w - PADDING_X * 2, h - PADDING_Y * 2).fill(0xffffff)
       // 文本底部锚定在矩形底部内侧。
       this.text.position.set(0, -TAIL_HEIGHT - PADDING_Y)
     }

@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{
-    AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    AppHandle, Listener, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder,
 };
 
@@ -100,6 +100,26 @@ struct CodexPetDetailEnvelope {
     pet: CodexPetSummary,
 }
 
+/// codex-pets.net 包内的 manifest.json 结构（与本地 meta.json 不同）。
+///
+/// 用户从 codex-pets 下载 ZIP 解压后，目录里只有 manifest.json + spritesheet.webp（没有 meta.json）。
+/// 本结构用于把上游格式映射成本地 LocalPetMeta 后再落盘 meta.json，实现对 codex 原生包的兼容导入。
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct CodexManifest {
+    pub id: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// 上游用 spritesheetPath 指向精灵图文件名（通常 "spritesheet.webp"）。
+    pub spritesheet_path: String,
+    /// 1 = 标准 9 行图集，2 = 扩展 11 行图集。
+    #[serde(default)]
+    pub sprite_version_number: Option<u32>,
+}
+
 /// 落地的本地宠物元数据（meta.json 的结构）。
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -123,6 +143,11 @@ pub struct LocalPetMeta {
     /// codex-pets 的版本号（uploadedAt 毫秒）。
     #[serde(default)]
     pub version: Option<u64>,
+    /// 精灵图版本号（codex manifest.json 的 spriteVersionNumber）：
+    /// 1 = 标准 9 行图集（1536x1872），2 = 扩展 11 行图集（1536x2288）。
+    /// 缺省时由渲染层按图集实际高度推断（≥11 行按 v2 处理）。
+    #[serde(default)]
+    pub sprite_version_number: Option<u32>,
     #[serde(default)]
     pub installed_at: Option<String>,
 }
@@ -173,6 +198,7 @@ pub struct LocalPetInfo {
     pub poster_path: Option<String>,
     pub spritesheet_url: Option<String>,
     pub version: Option<u64>,
+    pub sprite_version_number: Option<u32>,
     pub installed_at: Option<String>,
 }
 
@@ -197,16 +223,49 @@ fn pet_dir(app: &AppHandle, pet_id: &str) -> Result<PathBuf, String> {
     Ok(pets_dir(app)?.join(pet_id))
 }
 
-/// 读取某只宠物目录下的 meta.json。
+/// 读取某只宠物目录下的元数据：优先 meta.json，不存在则回退到 codex 的 manifest.json。
+///
+/// 兼容 codex-pets.net 原生包：用户把下载的 ZIP 解压进 pets/ 目录时，里面只有 manifest.json
+/// （字段为 spritesheetPath / spriteVersionNumber），没有本地 meta.json。这里把 manifest 映射成
+/// LocalPetMeta，并（可选）落盘 meta.json 便于后续管理与编辑。
 fn read_meta(dir: &Path) -> Result<Option<LocalPetMeta>, String> {
     let meta_path = dir.join("meta.json");
-    if !meta_path.exists() {
+    if meta_path.exists() {
+        let content = fs::read_to_string(&meta_path)
+            .map_err(|e| format!("读取 meta.json 失败: {}", e))?;
+        let meta: LocalPetMeta = serde_json::from_str(&content)
+            .map_err(|e| format!("解析 meta.json 失败: {}", e))?;
+        return Ok(Some(meta));
+    }
+
+    // 回退：codex manifest.json（上游包格式）。
+    let manifest_path = dir.join("manifest.json");
+    if !manifest_path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&meta_path)
-        .map_err(|e| format!("读取 meta.json 失败: {}", e))?;
-    let meta: LocalPetMeta = serde_json::from_str(&content)
-        .map_err(|e| format!("解析 meta.json 失败: {}", e))?;
+    let content = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("读取 manifest.json 失败: {}", e))?;
+    let manifest: CodexManifest = serde_json::from_str(&content)
+        .map_err(|e| format!("解析 manifest.json 失败: {}", e))?;
+
+    let meta = LocalPetMeta {
+        id: manifest.id.clone(),
+        display_name: manifest.display_name.clone(),
+        description: manifest.description.clone(),
+        kind: manifest.kind.clone(),
+        tags: vec![],
+        source: "imported".to_string(),
+        spritesheet_file: manifest.spritesheet_path.clone(),
+        poster_file: None,
+        spritesheet_url: None,
+        version: None,
+        sprite_version_number: manifest.sprite_version_number,
+        installed_at: Some(now_rfc3339()),
+    };
+
+    // 落盘成 meta.json，后续读取走快路径，也便于用户编辑。
+    let _ = write_meta(dir, &meta);
+
     Ok(Some(meta))
 }
 
@@ -238,6 +297,7 @@ fn meta_to_info(dir: &Path, meta: &LocalPetMeta) -> LocalPetInfo {
         poster_path,
         spritesheet_url: meta.spritesheet_url.clone(),
         version: meta.version,
+        sprite_version_number: meta.sprite_version_number,
         installed_at: meta.installed_at.clone(),
     }
 }
@@ -473,6 +533,7 @@ pub async fn download_codex_pet(
             .as_ref()
             .and_then(|s| s.parse::<chrono::DateTime<chrono::Utc>>().ok())
             .map(|dt| dt.timestamp_millis() as u64),
+        sprite_version_number: None,
         installed_at: Some(now_rfc3339()),
     };
     write_meta(&dir, &meta)?;
@@ -847,13 +908,41 @@ fn rect_inside_any_monitor(
 
 /// 显示宠物窗口。全屏透明窗口铺满当前显示器（单屏），宠物在内部自由漫游。
 /// 多屏漫游由前端在检测到宠物跨屏时调用 `move_pet_window_to_monitor` 迁移窗口实现。
+///
+/// 会等待前端「首帧就绪」事件再显示：pet 窗口加载 HTML 时，webview 在解析到内联透明
+/// 样式（index.html 的 html.pet-window）之前会闪现默认白底。这里在 show 前阻塞等待前端
+/// emit 的 `pet-window-ready`（DOMContentLoaded 触发，此时内联透明样式已应用），消除白屏。
+/// 带 800ms 超时兜底：即便前端加载失败/抛错，窗口仍会显示（不能因等不到事件而永远不显示）。
 #[tauri::command]
-pub fn show_pet_window(app: AppHandle) -> Result<(), String> {
+pub async fn show_pet_window(app: AppHandle) -> Result<(), String> {
     let window = ensure_pet_window(&app)?;
     // 单屏铺满当前显示器（macOS 下跨屏超大窗口在副屏不可见，故采用单屏 + 迁移）。
     position_fullscreen(&window)?;
+
+    // 等待前端首帧就绪（最多 800ms），消除 webview 解析 HTML 期间的白色闪屏。
+    wait_pet_window_ready(&app).await;
+
     window.show().map_err(|e| format!("显示宠物窗口失败: {}", e))?;
     Ok(())
+}
+
+/// 等待前端 emit `pet-window-ready`（带 800ms 超时兜底）。
+///
+/// pet 窗口的 index.html 内联了透明样式（html.pet-window body { background:transparent }），
+/// 但该样式仅在 HTML 解析后生效。webview 创建后、解析前的极短窗口内会渲染默认白底。
+/// 前端在 DOMContentLoaded（内联透明样式已应用）时 emit 本事件；后端等到后再 show，
+/// 从用户视角窗口「直接透明出现」，不再有白屏闪现。超时兜底防止前端异常导致窗口永不显示。
+async fn wait_pet_window_ready(app: &AppHandle) {
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_clone = tx.clone();
+    let _listener = app.listen("pet-window-ready", move |_event| {
+        if let Some(sender) = tx_clone.lock().ok().and_then(|mut g| g.take()) {
+            let _ = sender.send(());
+        }
+    });
+    // 超时兜底：800ms 内没等到事件也继续 show（不能让窗口因前端问题而永远不可见）。
+    let _ = tokio::time::timeout(Duration::from_millis(800), rx).await;
 }
 
 /// 隐藏宠物窗口。
@@ -870,8 +959,9 @@ pub fn hide_pet_window(app: AppHandle) -> Result<(), String> {
 /// 切换宠物窗口显隐，返回切换后是否可见。
 ///
 /// 全屏透明窗口模式下位置恒定，显示时直接铺满整屏，隐藏时无需落盘记忆位置。
+/// 显示路径同样等待前端首帧就绪，消除白屏（与 show_pet_window 一致）。
 #[tauri::command]
-pub fn toggle_pet_window(app: AppHandle) -> Result<bool, String> {
+pub async fn toggle_pet_window(app: AppHandle) -> Result<bool, String> {
     let window = ensure_pet_window(&app)?;
     let visible = window.is_visible().map_err(|e| format!("{}", e))?;
     if visible {
@@ -880,6 +970,7 @@ pub fn toggle_pet_window(app: AppHandle) -> Result<bool, String> {
     } else {
         // 单屏铺满当前显示器。
         position_fullscreen(&window)?;
+        wait_pet_window_ready(&app).await;
         window.show().map_err(|e| format!("显示宠物窗口失败: {}", e))?;
         Ok(true)
     }
@@ -1139,6 +1230,7 @@ pub async fn import_local_pet(
         poster_file: None,
         spritesheet_url: None,
         version: None,
+        sprite_version_number: None,
         installed_at: Some(now_rfc3339()),
     };
     write_meta(&dir, &meta)?;

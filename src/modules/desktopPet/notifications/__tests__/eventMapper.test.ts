@@ -174,12 +174,12 @@ describe('mapEvent', () => {
     expect(spec!.action).toBe('waving')
   })
 
-  it('truncates Stop fullText to <=120 chars with ellipsis', () => {
+  it('passes Stop fullText through in full (no truncation, bubble auto-expands)', () => {
     const long = 'a'.repeat(200)
     const spec = mapEvent({ event: 'Stop', lastAssistantMessage: long })
 
-    expect(spec!.fullText).toHaveLength(121) // 120 + '…'
-    expect(spec!.fullText!.endsWith('…')).toBe(true)
+    expect(spec!.fullText).toBe(long)
+    expect(spec!.fullText).not.toMatch(/…$/)
   })
 
   it('drops Stop fullText when message is empty or whitespace', () => {

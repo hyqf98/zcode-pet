@@ -248,7 +248,7 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
 /// 切换宠物窗口显隐（供托盘左键单击与「显示/隐藏宠物」菜单项共用）。
 ///
 /// 在 Rust 侧直接操作窗口，不经过 invoke：可见则隐藏（隐藏前落盘位置），
-/// 不可见则复用 show_pet_window 的位置恢复逻辑。
+/// 不可见则复用 show_pet_window 的位置恢复逻辑（含首帧就绪等待，消除白屏）。
 fn toggle_pet_visibility(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PET_WINDOW_LABEL) {
         let visible = w.is_visible().unwrap_or(false);
@@ -264,7 +264,8 @@ fn toggle_pet_visibility(app: &AppHandle) {
             }
             let _ = w.hide();
         } else {
-            let _ = desktop_pet::show_pet_window(app.clone());
+            // show_pet_window 已改为 async（等待前端首帧就绪消除白屏），此处阻塞执行。
+            let _ = tauri::async_runtime::block_on(desktop_pet::show_pet_window(app.clone()));
         }
     }
 }

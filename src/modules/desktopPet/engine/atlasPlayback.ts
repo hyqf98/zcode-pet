@@ -91,7 +91,7 @@ export function pickAtlasRow(
 // 环境行池 —— idle 周期之间，覆盖层会潜入这些行，使停泊的宠物不会显得静止，
 // 随机执行 atlas 任一动画状态（codex-pets.net 预览页暴露的同一"ANIMATION STATES"）。
 // 排除 idle，因为它是宠物在 burst 之间返回的休息基线；其余每个状态 —— 包括 failed/waiting
-// （读起来像消极或期待的情绪）—— 都可用，让宠物显得鲜活多变。
+// （读起来像消极或期待的情绪）以及 v2 的 look-right/left-side（环顾）—— 都可用，让宠物显得鲜活多变。
 const AMBIENT_ROW_POOL: readonly string[] = [
   'waving',
   'review',
@@ -100,7 +100,9 @@ const AMBIENT_ROW_POOL: readonly string[] = [
   'running-right',
   'running-left',
   'failed',
-  'waiting'
+  'waiting',
+  'look-right-side',
+  'look-left-side'
 ]
 
 // 从 atlas 随机挑选一个环境行，优先 AMBIENT_ROW_POOL 中的 id，并尽量避开 avoidId，
